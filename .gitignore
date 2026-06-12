@@ -1,0 +1,28 @@
+# Omakase.in Reservation Bot
+# Dependencies, secrets, and debug artifacts
+
+# ─── Python ─────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# ─── Config & Secrets ───────────────────────────
+*.yaml
+!config.example.yaml
+.env
+session.json
+
+# ─── Debug ──────────────────────────────────────
+debug_*.png
+
+# ─── OS / Editor ────────────────────────────────
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

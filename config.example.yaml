@@ -1,0 +1,32 @@
+# Omakase.in Reservation Bot Configuration
+# Copy this file to config.yaml and fill in your details.
+
+# ─── Account Credentials ───────────────────────────────────────────────
+email: "your_email@example.com"       # Your omakase.in login email
+password: "your_password"             # Your omakase.in login password
+
+# ─── Reservation Target ────────────────────────────────────────────────
+restaurant_id: "kv798125"            # Restaurant ID from the URL (e.g., /en/r/kv798125)
+date: "2026-07-12"                   # Target date in YYYY-MM-DD format
+time: "18:00"                        # Preferred time (bot picks closest available slot)
+party_size: 2                        # Number of guests (default: 2)
+
+# ─── Bot Mode ──────────────────────────────────────────────────────────
+# "sniper"  - waits for exact release time, then books immediately
+# "monitor" - continuously checks for availability at a regular interval
+mode: "sniper"
+
+# ─── Booking Behavior ──────────────────────────────────────────────────
+auto_book: true                      # true = complete the booking automatically
+                                     # false = just notify when a slot is found
+
+# ─── Sniper Mode Settings ──────────────────────────────────────────────
+release_time: "00:00"                # When new slots drop (HH:MM in JST, default: 00:00)
+max_attempts: 100                    # Max booking attempts after release (default: 100)
+
+# ─── Monitor Mode Settings ─────────────────────────────────────────────
+check_interval: 300                  # Seconds between availability checks (default: 300)
+
+# ─── Browser Settings ──────────────────────────────────────────────────
+headless: true                       # true = run browser in background (no visible window)
+                                     # false = show browser window (useful for debugging)

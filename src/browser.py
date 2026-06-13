@@ -79,6 +79,14 @@ class BrowserManager:
             viewport={"width": 1920, "height": 1080}
         )
         self._page = self._context.new_page()
+        
+        # Block heavy assets to save proxy bandwidth
+        self._page.route(
+            "**/*",
+            lambda route: route.abort()
+            if route.request.resource_type in ["image", "media", "font"]
+            else route.continue_()
+        )
 
         logger.info("Browser ready")
         return self._page

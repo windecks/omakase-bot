@@ -50,12 +50,17 @@ _LOGGED_IN_INDICATORS = [
     "a[href*='mypage']",
     "a[href*='my_page']",
     "a:has-text('My Page')",
+    "a[href*='reservations']",
+    "a[href*='favorites']",
+    "a[href*='profile']",
+    ".profile-icon",
 ]
 
 
 # ────────────────────────────────────────────────────────────────────────
 # Helpers
 # ────────────────────────────────────────────────────────────────────────
+
 
 def _find_element(page: Page, selectors: list[str], timeout: int = 5000):
     """Try each selector in order; return the first match or None."""
@@ -74,7 +79,7 @@ def _is_logged_in(page: Page, timeout: int = 3000) -> bool:
     """Heuristic check: are we currently logged in?"""
     for sel in _LOGGED_IN_INDICATORS:
         try:
-            if page.wait_for_selector(sel, timeout=timeout, state="visible"):
+            if page.wait_for_selector(sel, timeout=timeout, state="attached"):
                 return True
         except PwTimeout:
             continue
@@ -84,6 +89,7 @@ def _is_logged_in(page: Page, timeout: int = 3000) -> bool:
 # ────────────────────────────────────────────────────────────────────────
 # Public API
 # ────────────────────────────────────────────────────────────────────────
+
 
 def login(bm: BrowserManager, config: BotConfig) -> bool:
     """
@@ -101,7 +107,10 @@ def login(bm: BrowserManager, config: BotConfig) -> bool:
     if bm.load_cookies():
         logger.info("Testing restored session…")
         page.goto("https://omakase.in/en", wait_until="domcontentloaded")
-        page.wait_for_load_state("networkidle")
+        try:
+            page.wait_for_load_state("networkidle", timeout=10000)
+        except PwTimeout:
+            pass
 
         if _is_logged_in(page):
             logger.info("✓ Session restored – already logged in")
@@ -129,14 +138,39 @@ def ensure_logged_in(bm: BrowserManager, config: BotConfig) -> bool:
 # Internal
 # ────────────────────────────────────────────────────────────────────────
 
+
 def _do_login(bm: BrowserManager, config: BotConfig) -> bool:
     """Execute the login form flow."""
     page = bm.page
 
-    logger.info("Navigating to login page…")
-    page.goto(_LOGIN_URL, wait_until="domcontentloaded")
-    page.wait_for_load_state("networkidle")
-    time.sleep(0.5)  # small settle delay
+    logger.info("Navigating to homepage to find login link…")
+    page.goto("https://omakase.in/en", wait_until="domcontentloaded")
+    try:
+        page.wait_for_load_state("networkidle", timeout=10000)
+    except PwTimeout:
+        pass
+    time.sleep(0.5)
+
+    # ── Click login link ─────────────────────────────────────────────
+    login_link_selectors = [
+        "a[href*='sign_in']",
+        "a[href*='login']",
+        "a:has-text('Login')",
+        "a:has-text('Sign in')",
+    ]
+    login_link = _find_element(page, login_link_selectors, timeout=5000)
+    if login_link:
+        logger.info("Clicking login link…")
+        login_link.click()
+        try:
+            page.wait_for_load_state("networkidle", timeout=10000)
+        except PwTimeout:
+            pass
+        time.sleep(0.5)
+    else:
+        logger.warning(
+            "Could not find a login link on the homepage. Assuming already on login page or relying on form fields appearing."
+        )
 
     # ── Find form elements ───────────────────────────────────────────
     email_input = _find_element(page, _EMAIL_SELECTORS)

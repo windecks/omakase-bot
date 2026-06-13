@@ -40,6 +40,7 @@ class BotConfig:
     # Mode
     mode: str = "sniper"      # "sniper" | "monitor"
     auto_book: bool = True
+    dry_run: bool = False     # Go through entire flow but stop before final confirm
 
     # Sniper
     release_time: str = "00:00"   # HH:MM in JST
@@ -62,7 +63,13 @@ class BotConfig:
 
     @property
     def restaurant_url(self) -> str:
+        """URL of the restaurant page (not the reservation form)."""
         return f"https://omakase.in/en/r/{self.restaurant_id}"
+
+    @property
+    def reservation_url(self) -> str:
+        """URL of the reservation form (for reference only — navigate via button click)."""
+        return f"https://omakase.in/en/r/{self.restaurant_id}/reservations/new"
 
     @property
     def target_date(self) -> datetime:
@@ -153,6 +160,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mode", type=str, choices=["sniper", "monitor"], default=None)
     parser.add_argument("--auto-book", type=_str_to_bool, default=None, dest="auto_book",
                         help="true/false – auto-complete booking")
+    parser.add_argument("--dry-run", type=_str_to_bool, default=None, dest="dry_run",
+                        help="true/false – run entire flow but stop before final confirm")
     parser.add_argument("--release-time", type=str, default=None, dest="release_time",
                         help="HH:MM in JST when slots drop (sniper mode)")
     parser.add_argument("--max-attempts", type=int, default=None, dest="max_attempts")

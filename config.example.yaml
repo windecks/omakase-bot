@@ -19,6 +19,7 @@ mode: "sniper"
 # ─── Booking Behavior ──────────────────────────────────────────────────
 auto_book: true                      # true = complete the booking automatically
                                      # false = just notify when a slot is found
+dry_run: false                       # true = run entire flow but stop right before final confirm click
 
 # ─── Sniper Mode Settings ──────────────────────────────────────────────
 release_time: "00:00"                # When new slots drop (HH:MM in JST, default: 00:00)

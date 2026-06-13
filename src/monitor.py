@@ -79,7 +79,10 @@ def run_monitor(bm: BrowserManager, config: BotConfig) -> bool:
                     return False
 
             try:
-                result, found_time = check_availability(bm, config)
+                if config.auto_book:
+                    result, found_time = attempt_booking(bm, config)
+                else:
+                    result, found_time = check_availability(bm, config)
             except Exception as e:
                 logger.error("Check #%d crashed: %s", check_number, e)
                 bm.screenshot(f"monitor_crash_{check_number}")
@@ -93,24 +96,10 @@ def run_monitor(bm: BrowserManager, config: BotConfig) -> bool:
                 if not config.auto_book:
                     logger.info("Auto-book disabled – exiting with notification only")
                     return True
-
-                # Attempt to book
-                logger.info("Auto-booking slot %s…", found_time)
-                try:
-                    book_result, booked_time = attempt_booking(bm, config)
-                except Exception as e:
-                    logger.error("Booking attempt crashed: %s", e)
-                    bm.screenshot("monitor_book_crash")
-                    book_result = BookingResult.BOOKING_FAILED
-                    booked_time = None
-
-                if book_result == BookingResult.SUCCESS:
-                    notify_booking_success(config.date, booked_time or found_time, config.restaurant_id)
+                else:
+                    notify_booking_success(config.date, found_time, config.restaurant_id)
                     bm.screenshot("monitor_success")
                     return True
-                else:
-                    notify_booking_failed(f"Slot {found_time} found but booking failed ({book_result.value})")
-                    # Continue monitoring – slot might still be available
 
             elif result == BookingResult.DATE_UNAVAILABLE:
                 logger.info("Date %s not yet available on calendar", config.date)

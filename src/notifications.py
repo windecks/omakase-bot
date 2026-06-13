@@ -167,6 +167,7 @@ def print_config_summary(
     time: str,
     party_size: int,
     auto_book: bool,
+    dry_run: bool = False,
 ) -> None:
     """Print a summary of the bot configuration."""
     lines = [
@@ -176,6 +177,8 @@ def print_config_summary(
         f"  Time:        {_c(_Colors.CYAN, time)}",
         f"  Party:       {_c(_Colors.CYAN, str(party_size))}",
         f"  Auto-book:   {_c(_Colors.GREEN if auto_book else _Colors.YELLOW, str(auto_book))}",
-        "",
     ]
+    if dry_run:
+        lines.append(f"  Dry run:     {_c(_Colors.YELLOW, '🧪 YES – will stop before final confirm')}")
+    lines.append("")
     print("\n".join(lines))

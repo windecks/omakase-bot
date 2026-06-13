@@ -12,8 +12,9 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
-from playwright_stealth import stealth_sync
+from playwright.sync_api import Browser, BrowserContext, Page, Playwright
+from cloakbrowser import launch
+from playwright_stealth import Stealth
 
 from src.config import BotConfig
 
@@ -50,7 +51,8 @@ class BrowserManager:
     @property
     def page(self) -> Page:
         if self._page is None:
-            raise RuntimeError("Browser not started – use 'with BrowserManager(cfg) as bm:'")
+            raise RuntimeError(
+                "Browser not started – use 'with BrowserManager(cfg) as bm:'")
         return self._page
 
     @property
@@ -65,15 +67,8 @@ class BrowserManager:
         """Launch the browser, apply stealth, and return the page."""
         logger.info("Launching browser (headless=%s)…", self.config.headless)
 
-        self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(
-            headless=self.config.headless,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-first-run",
-                "--no-default-browser-check",
-            ],
-        )
+        self._pw = None
+        self._browser = launch()
         self._context = self._browser.new_context(
             viewport={"width": 1920, "height": 1080},
             user_agent=_USER_AGENT,
@@ -81,7 +76,7 @@ class BrowserManager:
             timezone_id="Asia/Tokyo",
         )
         self._page = self._context.new_page()
-        stealth_sync(self._page)
+        Stealth().apply_stealth_sync(self._page)
 
         logger.info("Browser ready")
         return self._page
@@ -140,7 +135,8 @@ class BrowserManager:
             logger.info("Restored %d cookies from %s", len(cookies), src)
             return True
         except (json.JSONDecodeError, KeyError) as exc:
-            logger.warning("Corrupt session file (%s) – ignoring: %s", src, exc)
+            logger.warning(
+                "Corrupt session file (%s) – ignoring: %s", src, exc)
             return False
 
     # ── Debug helpers ────────────────────────────────────────────────

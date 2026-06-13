@@ -83,6 +83,7 @@ party_size: 2
 # Mode
 mode: "sniper"                  # "sniper" | "monitor"
 auto_book: true                 # false = notify only, don't book
+dry_run: false                  # true = run entire flow but stop right before final confirm click
 
 # Sniper settings
 release_time: "00:00"           # HH:MM in JST
@@ -107,7 +108,8 @@ python main.py \
   --time 19:00 \
   --party-size 4 \
   --headless false \
-  --auto-book false
+  --auto-book false \
+  --dry-run true
 ```
 
 **Priority:** CLI flags > YAML config > defaults.
@@ -125,6 +127,7 @@ python main.py \
 | `--party-size` | Number of guests | `2` |
 | `--mode` | `sniper` or `monitor` | `sniper` |
 | `--auto-book` | Auto-complete booking | `true` |
+| `--dry-run` | Run entire flow but stop before final confirm | `false` |
 | `--release-time` | Slot drop time in JST (HH:MM) | `00:00` |
 | `--max-attempts` | Max sniper retries | `100` |
 | `--check-interval` | Monitor poll interval (seconds) | `300` |

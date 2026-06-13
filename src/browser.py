@@ -68,7 +68,10 @@ class BrowserManager:
         logger.info("Launching browser (headless=%s)…", self.config.headless)
 
         self._pw = None
-        self._browser = launch()
+        self._browser = launch(
+            headless=self.config.headless,
+            humanize=True
+        )
         self._context = self._browser.new_context(
             viewport={"width": 1920, "height": 1080},
             user_agent=_USER_AGENT,

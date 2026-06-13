@@ -10,10 +10,9 @@ logger = logging.getLogger(__name__)
 def _is_logged_in(page: Page) -> bool:
     try:
         sel = (
-            ".user-menu, #user-menu, .profile-icon, "
             "a[href*='sign_out'], a[href*='logout'], "
             "a[href*='mypage'], a[href*='my_page'], "
-            "a[href*='reservations'], a[href*='favorites'], a[href*='profile']"
+            "a:has-text('Sign out'), a:has-text('Logout')"
         )
         page.locator(sel).first.wait_for(state="attached", timeout=5000)
         return True

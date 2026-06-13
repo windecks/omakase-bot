@@ -73,10 +73,20 @@ def _confirm(page: Page, cfg: BotConfig) -> bool:
     for _ in range(3):
         if page.locator("text='Reservation confirmed', [class*='success']").first.is_visible(timeout=1000): return True
         btn = page.locator("button:has-text('Proceed to review'), button:has-text('Confirm'), button:has-text('Complete')").first
-        if btn.is_visible(timeout=3000):
-            if not cfg.auto_book and "review" not in (btn.text_content() or "").lower(): return True
+        if btn.is_visible(timeout=5000):
+            text = (btn.text_content() or "").lower()
+            if not cfg.auto_book and "review" not in text: 
+                return True
             try: btn.click(force=True)
             except: pass
+            
+            if not cfg.auto_book:
+                try:
+                    page.locator("button:has-text('Confirm'), button:has-text('Complete')").first.wait_for(timeout=15000)
+                    return True
+                except:
+                    return False
+
             _delay(1, 2)
     return page.locator("text='Reservation confirmed', [class*='success']").first.is_visible(timeout=2000)
 

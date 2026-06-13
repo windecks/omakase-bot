@@ -143,10 +143,10 @@ def run_sniper(bm: BrowserManager, config: BotConfig) -> bool:
 
         if result == BookingResult.SUCCESS:
             if not config.auto_book:
-                notify_slot_found(config.date, booked_time or config.time, config.restaurant_id, url)
+                notify_slot_found(config.date, booked_time or config.time, config.restaurant_id, url, config.discord_webhook_url, config.discord_user_id)
                 logger.info("Manual hold successful – exiting with notification only")
             else:
-                notify_booking_success(config.date, booked_time or config.time, config.restaurant_id, url)
+                notify_booking_success(config.date, booked_time or config.time, config.restaurant_id, url, config.discord_webhook_url, config.discord_user_id)
             bm.screenshot("sniper_success")
             return True
 

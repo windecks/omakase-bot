@@ -88,16 +88,14 @@ def run_monitor(bm: BrowserManager, config: BotConfig) -> bool:
 
             if result == BookingResult.SUCCESS and found_time:
                 # Slot found!
-                notify_slot_found(config.date, found_time,
-                                  config.restaurant_id, url)
-
                 if not config.auto_book:
+                    notify_slot_found(config.date, found_time, config.restaurant_id, url, config.discord_webhook_url, config.discord_user_id)
                     logger.info(
                         "Manual hold successful – exiting with notification only")
                     return True
                 else:
                     notify_booking_success(
-                        config.date, found_time, config.restaurant_id, url)
+                        config.date, found_time, config.restaurant_id, url, config.discord_webhook_url, config.discord_user_id)
                     bm.screenshot("monitor_success")
                     return True
 

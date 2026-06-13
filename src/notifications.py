@@ -10,8 +10,38 @@ import logging
 import os
 import subprocess
 import sys
+import json
+import urllib.request
+import urllib.error
 
 logger = logging.getLogger(__name__)
+
+def _send_discord_webhook(webhook_url: str, title: str, description: str, color: int, url: str | None = None, user_id: str | None = None) -> None:
+    if not webhook_url:
+        return
+    embed = {
+        "title": title,
+        "description": description,
+        "color": color,
+    }
+    if url:
+        embed["url"] = url
+    
+    payload = {"embeds": [embed]}
+    if user_id:
+        payload["content"] = f"<@{user_id}>"
+    
+    req = urllib.request.Request(
+        webhook_url, 
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req) as response:
+            pass
+    except urllib.error.URLError as e:
+        logger.error(f"Failed to send Discord webhook: {e}")
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -103,7 +133,7 @@ def play_sound() -> None:
         print("\a", end="", flush=True)
 
 
-def notify_slot_found(date: str, time: str, restaurant_id: str, url: str | None = None) -> None:
+def notify_slot_found(date: str, time: str, restaurant_id: str, url: str | None = None, webhook_url: str | None = None, user_id: str | None = None) -> None:
     """Announce that an available slot was found."""
     msg = (
         f"\n{'═' * 60}\n"
@@ -116,9 +146,11 @@ def notify_slot_found(date: str, time: str, restaurant_id: str, url: str | None 
     msg += f"{'═' * 60}\n"
     print(_c(_Colors.GREEN + _Colors.BOLD, msg))
     play_sound()
+    if webhook_url:
+        _send_discord_webhook(webhook_url, "🍣 Slot Found!", f"Restaurant: {restaurant_id}\nDate: {date} | Time: {time}", 0x00FF00, url, user_id)
 
 
-def notify_booking_success(date: str, time: str, restaurant_id: str, url: str | None = None) -> None:
+def notify_booking_success(date: str, time: str, restaurant_id: str, url: str | None = None, webhook_url: str | None = None, user_id: str | None = None) -> None:
     """Announce successful booking."""
     msg = (
         f"\n{'═' * 60}\n"
@@ -133,6 +165,8 @@ def notify_booking_success(date: str, time: str, restaurant_id: str, url: str | 
     # Play sound 3 times for emphasis
     for _ in range(3):
         play_sound()
+    if webhook_url:
+        _send_discord_webhook(webhook_url, "✅ Booking Confirmed!", f"Restaurant: {restaurant_id}\nDate: {date} | Time: {time}", 0x00FF00, url, user_id)
 
 
 def notify_booking_failed(reason: str) -> None:

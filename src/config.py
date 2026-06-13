@@ -19,6 +19,8 @@ class BotConfig:
     party_size: int = 1
     mode: str = "sniper"
     auto_book: bool = False
+    discord_webhook_url: str = ""
+    discord_user_id: str = ""
     release_time: str = "00:00"
     max_attempts: int = 100
     check_interval: int = 300

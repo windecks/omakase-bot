@@ -19,6 +19,8 @@ mode: "sniper"
 # ─── Booking Behavior ──────────────────────────────────────────────────
 auto_book: true                      # true = complete the booking automatically
                                      # false = hold reservation but don't click final confirm
+discord_webhook_url: ""              # Discord Webhook URL for notifications
+discord_user_id: "244914878622466048" # User ID to ping when a slot is found
 
 # ─── Sniper Mode Settings ──────────────────────────────────────────────
 release_time: "00:00"                # When new slots drop (HH:MM in JST, default: 00:00)

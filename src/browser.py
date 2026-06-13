@@ -14,7 +14,7 @@ from typing import Optional
 
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright
 from cloakbrowser import launch
-from playwright_stealth import Stealth
+
 
 from src.config import BotConfig
 
@@ -70,16 +70,15 @@ class BrowserManager:
         self._pw = None
         self._browser = launch(
             headless=self.config.headless,
-            humanize=True
+            humanize=True,
+            backend="patchright",
+            timezone="Asia/Tokyo",
+            locale="en-US"
         )
         self._context = self._browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            user_agent=_USER_AGENT,
-            locale="en-US",
-            timezone_id="Asia/Tokyo",
+            viewport={"width": 1920, "height": 1080}
         )
         self._page = self._context.new_page()
-        Stealth().apply_stealth_sync(self._page)
 
         logger.info("Browser ready")
         return self._page

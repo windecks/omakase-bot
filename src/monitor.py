@@ -22,7 +22,7 @@ from src.notifications import (
     notify_slot_found,
     notify_waiting,
 )
-from src.reservation import BookingResult, attempt_booking, check_availability
+from src.reservation import BookingResult, attempt_booking
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +79,7 @@ def run_monitor(bm: BrowserManager, config: BotConfig) -> bool:
                     return False
 
             try:
-                if config.auto_book:
-                    result, found_time = attempt_booking(bm, config)
-                else:
-                    result, found_time = check_availability(bm, config)
+                result, found_time, url = attempt_booking(bm, config)
             except Exception as e:
                 logger.error("Check #%d crashed: %s", check_number, e)
                 bm.screenshot(f"monitor_crash_{check_number}")
@@ -91,18 +88,22 @@ def run_monitor(bm: BrowserManager, config: BotConfig) -> bool:
 
             if result == BookingResult.SUCCESS and found_time:
                 # Slot found!
-                notify_slot_found(config.date, found_time, config.restaurant_id)
+                notify_slot_found(config.date, found_time,
+                                  config.restaurant_id, url)
 
                 if not config.auto_book:
-                    logger.info("Auto-book disabled – exiting with notification only")
+                    logger.info(
+                        "Manual hold successful – exiting with notification only")
                     return True
                 else:
-                    notify_booking_success(config.date, found_time, config.restaurant_id)
+                    notify_booking_success(
+                        config.date, found_time, config.restaurant_id, url)
                     bm.screenshot("monitor_success")
                     return True
 
             elif result == BookingResult.DATE_UNAVAILABLE:
-                logger.info("Date %s not yet available on calendar", config.date)
+                logger.info(
+                    "Date %s not yet available on calendar", config.date)
             elif result == BookingResult.NO_SLOTS:
                 logger.info("No slots available for %s", config.date)
             else:

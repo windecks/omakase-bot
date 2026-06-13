@@ -30,7 +30,6 @@ def main(argv: list[str] | None = None) -> int:
         time=config.time,
         party_size=config.party_size,
         auto_book=config.auto_book,
-        dry_run=config.dry_run,
     )
 
     success = False

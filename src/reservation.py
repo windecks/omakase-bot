@@ -74,58 +74,45 @@ def _confirm(page: Page, cfg: BotConfig) -> bool:
         if page.locator("text='Reservation confirmed', [class*='success']").first.is_visible(timeout=1000): return True
         btn = page.locator("button:has-text('Proceed to review'), button:has-text('Confirm'), button:has-text('Complete')").first
         if btn.is_visible(timeout=3000):
-            if cfg.dry_run and "review" not in (btn.text_content() or "").lower(): return True
+            if not cfg.auto_book and "review" not in (btn.text_content() or "").lower(): return True
             try: btn.click(force=True)
             except: pass
             _delay(1, 2)
     return page.locator("text='Reservation confirmed', [class*='success']").first.is_visible(timeout=2000)
 
-def check_availability(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str]]:
+def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str], Optional[str]]:
     bm.page.goto(cfg.restaurant_url, wait_until="domcontentloaded")
     bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
     try: bm.page.wait_for_load_state("networkidle", timeout=3000)
     except: pass
     if not _nav_month(bm.page, cfg.target_date.year, cfg.target_date.month) or not _click_date(bm.page, cfg.target_date.day):
-        return BookingResult.DATE_UNAVAILABLE, None
-        
-    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
-    except: pass
-    bm.page.wait_for_timeout(500)
-    
-    best = _pick_best(_find_slots(bm.page), cfg.time)
-    return (BookingResult.SUCCESS, best[0]) if best else (BookingResult.NO_SLOTS, None)
-
-def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str]]:
-    bm.page.goto(cfg.restaurant_url, wait_until="domcontentloaded")
-    bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
-    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
-    except: pass
-    if not _nav_month(bm.page, cfg.target_date.year, cfg.target_date.month) or not _click_date(bm.page, cfg.target_date.day):
-        return BookingResult.DATE_UNAVAILABLE, None
+        return BookingResult.DATE_UNAVAILABLE, None, None
     
     try: bm.page.wait_for_load_state("networkidle", timeout=3000)
     except: pass
     bm.page.wait_for_timeout(500)
     
     best = _pick_best(_find_slots(bm.page), cfg.time)
-    if not best: return BookingResult.NO_SLOTS, None
+    if not best: return BookingResult.NO_SLOTS, None, None
     best[1].click()
     _delay()
     try: bm.page.locator("input[name='course'] + label").first.click(timeout=1000)
     except: pass
 
-    return (BookingResult.SUCCESS, best[0]) if _confirm(bm.page, cfg) else (BookingResult.BOOKING_FAILED, best[0])
+    success = _confirm(bm.page, cfg)
+    return (BookingResult.SUCCESS, best[0], bm.page.url) if success else (BookingResult.BOOKING_FAILED, best[0], None)
 
-def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str]]:
+def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str], Optional[str]]:
     bm.page.reload(wait_until="domcontentloaded")
-    if not _click_date(bm.page, cfg.target_date.day): return BookingResult.DATE_UNAVAILABLE, None
+    if not _click_date(bm.page, cfg.target_date.day): return BookingResult.DATE_UNAVAILABLE, None, None
     
     try: bm.page.wait_for_load_state("networkidle", timeout=3000)
     except: pass
     bm.page.wait_for_timeout(500)
     
     best = _pick_best(_find_slots(bm.page), cfg.time)
-    if not best: return BookingResult.NO_SLOTS, None
+    if not best: return BookingResult.NO_SLOTS, None, None
     best[1].click()
     _delay()
-    return (BookingResult.SUCCESS, best[0]) if _confirm(bm.page, cfg) else (BookingResult.BOOKING_FAILED, best[0])
+    success = _confirm(bm.page, cfg)
+    return (BookingResult.SUCCESS, best[0], bm.page.url) if success else (BookingResult.BOOKING_FAILED, best[0], None)

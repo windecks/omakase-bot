@@ -16,10 +16,9 @@ class BotConfig:
     restaurant_id: str = ""
     date: str = ""
     time: str = "18:00"
-    party_size: int = 2
+    party_size: int = 1
     mode: str = "sniper"
-    auto_book: bool = True
-    dry_run: bool = False
+    auto_book: bool = False
     release_time: str = "00:00"
     max_attempts: int = 100
     check_interval: int = 300

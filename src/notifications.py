@@ -103,28 +103,32 @@ def play_sound() -> None:
         print("\a", end="", flush=True)
 
 
-def notify_slot_found(date: str, time: str, restaurant_id: str) -> None:
+def notify_slot_found(date: str, time: str, restaurant_id: str, url: str | None = None) -> None:
     """Announce that an available slot was found."""
     msg = (
         f"\n{'═' * 60}\n"
         f"  🍣  SLOT FOUND!\n"
         f"  Restaurant: {restaurant_id}\n"
         f"  Date: {date}  |  Time: {time}\n"
-        f"{'═' * 60}\n"
     )
+    if url:
+        msg += f"  Link: {url}\n"
+    msg += f"{'═' * 60}\n"
     print(_c(_Colors.GREEN + _Colors.BOLD, msg))
     play_sound()
 
 
-def notify_booking_success(date: str, time: str, restaurant_id: str) -> None:
+def notify_booking_success(date: str, time: str, restaurant_id: str, url: str | None = None) -> None:
     """Announce successful booking."""
     msg = (
         f"\n{'═' * 60}\n"
         f"  ✅  BOOKING CONFIRMED!\n"
         f"  Restaurant: {restaurant_id}\n"
         f"  Date: {date}  |  Time: {time}\n"
-        f"{'═' * 60}\n"
     )
+    if url:
+        msg += f"  Link: {url}\n"
+    msg += f"{'═' * 60}\n"
     print(_c(_Colors.GREEN + _Colors.BOLD, msg))
     # Play sound 3 times for emphasis
     for _ in range(3):
@@ -167,7 +171,6 @@ def print_config_summary(
     time: str,
     party_size: int,
     auto_book: bool,
-    dry_run: bool = False,
 ) -> None:
     """Print a summary of the bot configuration."""
     lines = [
@@ -178,7 +181,5 @@ def print_config_summary(
         f"  Party:       {_c(_Colors.CYAN, str(party_size))}",
         f"  Auto-book:   {_c(_Colors.GREEN if auto_book else _Colors.YELLOW, str(auto_book))}",
     ]
-    if dry_run:
-        lines.append(f"  Dry run:     {_c(_Colors.YELLOW, '🧪 YES – will stop before final confirm')}")
     lines.append("")
     print("\n".join(lines))

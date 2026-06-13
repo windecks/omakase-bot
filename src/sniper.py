@@ -129,9 +129,9 @@ def run_sniper(bm: BrowserManager, config: BotConfig) -> bool:
 
         try:
             if attempt == 1:
-                result, booked_time = attempt_booking(bm, config)
+                result, booked_time, url = attempt_booking(bm, config)
             else:
-                result, booked_time = quick_refresh_and_book(bm, config)
+                result, booked_time, url = quick_refresh_and_book(bm, config)
         except Exception as e:
             logger.error("Attempt %d crashed: %s", attempt, e)
             bm.screenshot(f"sniper_crash_{attempt}")
@@ -142,7 +142,11 @@ def run_sniper(bm: BrowserManager, config: BotConfig) -> bool:
         logger.debug("Attempt %d took %.2fs → %s", attempt, elapsed, result.value)
 
         if result == BookingResult.SUCCESS:
-            notify_booking_success(config.date, booked_time or config.time, config.restaurant_id)
+            if not config.auto_book:
+                notify_slot_found(config.date, booked_time or config.time, config.restaurant_id, url)
+                logger.info("Manual hold successful – exiting with notification only")
+            else:
+                notify_booking_success(config.date, booked_time or config.time, config.restaurant_id, url)
             bm.screenshot("sniper_success")
             return True
 

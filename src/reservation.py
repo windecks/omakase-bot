@@ -88,11 +88,21 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
     if not _nav_month(bm.page, cfg.target_date.year, cfg.target_date.month) or not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None, None
     
-    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
+    try: bm.page.locator(".p-rsv_c_empty").wait_for(state="hidden", timeout=4000)
     except: pass
-    bm.page.wait_for_timeout(500)
+    try: bm.page.locator(".ui.active.dimmer, .loading, .loader").wait_for(state="hidden", timeout=4000)
+    except: pass
     
-    best = _pick_best(_find_slots(bm.page), cfg.time)
+    slots = []
+    for _ in range(15):
+        slots = _find_slots(bm.page)
+        if slots: break
+        txt = (bm.page.locator(".p-rsv_c_selectWrap").text_content() or "").lower()
+        if any(w in txt for w in ["sold out", "no slot", "not available", "no available", "no course", "full"]):
+            break
+        bm.page.wait_for_timeout(200)
+    
+    best = _pick_best(slots, cfg.time)
     if not best: return BookingResult.NO_SLOTS, None, None
     best[1].click()
     _delay()
@@ -106,11 +116,21 @@ def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingR
     bm.page.reload(wait_until="domcontentloaded")
     if not _click_date(bm.page, cfg.target_date.day): return BookingResult.DATE_UNAVAILABLE, None, None
     
-    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
+    try: bm.page.locator(".p-rsv_c_empty").wait_for(state="hidden", timeout=4000)
     except: pass
-    bm.page.wait_for_timeout(500)
+    try: bm.page.locator(".ui.active.dimmer, .loading, .loader").wait_for(state="hidden", timeout=4000)
+    except: pass
     
-    best = _pick_best(_find_slots(bm.page), cfg.time)
+    slots = []
+    for _ in range(15):
+        slots = _find_slots(bm.page)
+        if slots: break
+        txt = (bm.page.locator(".p-rsv_c_selectWrap").text_content() or "").lower()
+        if any(w in txt for w in ["sold out", "no slot", "not available", "no available", "no course", "full"]):
+            break
+        bm.page.wait_for_timeout(200)
+    
+    best = _pick_best(slots, cfg.time)
     if not best: return BookingResult.NO_SLOTS, None, None
     best[1].click()
     _delay()

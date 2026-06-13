@@ -34,7 +34,10 @@ def _send_discord_webhook(webhook_url: str, title: str, description: str, color:
     req = urllib.request.Request(
         webhook_url, 
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "OmakaseBot/1.0"
+        },
         method="POST"
     )
     try:

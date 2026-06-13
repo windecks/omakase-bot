@@ -1,889 +1,131 @@
-"""
-Core reservation logic.
-
-Navigates the restaurant page, finds available dates/slots, and
-completes the booking flow.
-"""
-
+"""Core reservation logic."""
 from __future__ import annotations
-
-import logging
-import random
-import time
-from datetime import datetime
+import logging, random, time, re
 from enum import Enum
 from typing import Optional
-
-from playwright.sync_api import Page, TimeoutError as PwTimeout
-
+from playwright.sync_api import Page
 from src.browser import BrowserManager
 from src.config import BotConfig
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://omakase.in"
-
-
 class BookingResult(Enum):
-    """Outcome of a booking attempt."""
-
     SUCCESS = "success"
     NO_SLOTS = "no_slots"
     DATE_UNAVAILABLE = "date_unavailable"
     BOOKING_FAILED = "booking_failed"
     ALREADY_BOOKED = "already_booked"
 
+def _delay(low=0.2, high=0.5): time.sleep(random.uniform(low, high))
 
-# ────────────────────────────────────────────────────────────────────────
-# Human-like delays
-# ────────────────────────────────────────────────────────────────────────
-
-
-def _human_delay(low: float = 0.2, high: float = 0.8) -> None:
-    """Sleep a random duration to mimic human pacing."""
-    time.sleep(random.uniform(low, high))
-
-
-def _find(page: Page, selectors: list[str], timeout: int = 5000):
-    """Try all selectors simultaneously; return the first visible match or None."""
-    combined_sel = ", ".join(selectors)
-    try:
-        el = page.wait_for_selector(combined_sel, timeout=timeout, state="visible")
-        if el:
-            logger.debug("Matched one of the selectors")
-            return el
-    except Exception:
-        pass
-    return None
-
-
-# ────────────────────────────────────────────────────────────────────────
-# Calendar navigation
-# ────────────────────────────────────────────────────────────────────────
-
-
-def _get_calendar_month_year(page: Page) -> Optional[tuple[int, int]]:
-    """
-    Extract the currently displayed month/year from the calendar header.
-
-    Returns (year, month) or None if unreadable.
-    """
-    # Common calendar header selectors
-    header_selectors = [
-        ".calendar-header",
-        ".datepicker-switch",
-        ".flatpickr-current-month",
-        ".fc-toolbar-title",
-        "[class*='month-header']",
-        "[class*='calendar'] [class*='title']",
-        "[class*='calendar'] [class*='header']",
-        "th.month",
-        ".month-name",
-        ".p-reservation_customer_table_header",
-    ]
-
-    for sel in header_selectors:
-        try:
-            el = page.query_selector(sel)
-            if el:
-                text = (el.text_content() or "").strip()
-                if text:
-                    return _parse_month_year(text)
-        except Exception:
-            continue
-
-    # Fallback: look for any element with month names
-    months = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-    ]
-    for month_name in months:
-        try:
-            el = page.query_selector(f":has-text('{month_name} 20')")
-            if el:
-                text = (el.text_content() or "").strip()
-                parsed = _parse_month_year(text)
-                if parsed:
-                    return parsed
-        except Exception:
-            continue
-
-    return None
-
-
-def _parse_month_year(text: str) -> Optional[tuple[int, int]]:
-    """Parse strings like 'July 2026' or '2026年7月' into (year, month)."""
-    import re
-
-    month_names = {
-        "january": 1,
-        "february": 2,
-        "march": 3,
-        "april": 4,
-        "may": 5,
-        "june": 6,
-        "july": 7,
-        "august": 8,
-        "september": 9,
-        "october": 10,
-        "november": 11,
-        "december": 12,
-    }
-
-    text_lower = text.lower().strip()
-
-    # "July 2026" / "Jul 2026"
-    for name, num in month_names.items():
-        if name[:3] in text_lower:
-            year_match = re.search(r"20\d{2}", text)
-            if year_match:
-                return int(year_match.group()), num
-
-    # "2026年7月" (Japanese format)
-    jp_match = re.search(r"(\d{4})\D+(\d{1,2})", text)
-    if jp_match:
-        return int(jp_match.group(1)), int(jp_match.group(2))
-
-    # "7/2026" or "07/2026"
-    slash_match = re.search(r"(\d{1,2})/(\d{4})", text)
-    if slash_match:
-        return int(slash_match.group(2)), int(slash_match.group(1))
-
-    return None
-
-
-def _navigate_to_month(
-    page: Page, target_year: int, target_month: int, max_clicks: int = 24
-) -> bool:
-    """
-    Navigate the calendar forward/backward until we reach the target month.
-
-    Returns True if successful, False if we can't navigate there.
-    """
-    next_selectors = [
-        ".calendar-next",
-        ".flatpickr-next-month",
-        "button:has-text('›')",
-        "button:has-text('>')",
-        "button:has-text('Next')",
-        "[class*='next']",
-        "[aria-label='Next month']",
-        ".next",
-        ".fa-chevron-right",
-    ]
-    prev_selectors = [
-        ".calendar-prev",
-        ".flatpickr-prev-month",
-        "button:has-text('‹')",
-        "button:has-text('<')",
-        "button:has-text('Prev')",
-        "[class*='prev']",
-        "[aria-label='Previous month']",
-        ".prev",
-        ".fa-chevron-left",
-    ]
-
-    for attempt in range(max_clicks):
-        current = _get_calendar_month_year(page)
-        if current is None:
-            logger.warning(
-                "Cannot read current calendar month (attempt %d)", attempt + 1
-            )
-            _human_delay(0.5, 1.0)
-            continue
-
-        cur_year, cur_month = current
-        logger.debug(
-            "Calendar showing: %d-%02d, target: %d-%02d",
-            cur_year,
-            cur_month,
-            target_year,
-            target_month,
-        )
-
-        if cur_year == target_year and cur_month == target_month:
-            return True
-
-        # Determine direction
-        cur_total = cur_year * 12 + cur_month
-        target_total = target_year * 12 + target_month
-
-        if target_total > cur_total:
-            btn = _find(page, next_selectors, timeout=3000)
-            direction = "next"
+def _nav_month(page: Page, t_yr: int, t_mo: int) -> bool:
+    for _ in range(12):
+        loc = page.locator(".calendar-header, .datepicker-switch, th.month, [class*='month'], [class*='header']:has-text('20')").first
+        if not loc.is_visible(timeout=3000): return False
+        txt = loc.text_content() or ""
+        c_yr, c_mo = t_yr, t_mo
+        if m := re.search(r"(\d{4})\D+(\d{1,2})", txt): c_yr, c_mo = int(m.group(1)), int(m.group(2))
+        elif m := re.search(r"(\d{1,2})/(\d{4})", txt): c_mo, c_yr = int(m.group(1)), int(m.group(2))
         else:
-            btn = _find(page, prev_selectors, timeout=3000)
-            direction = "prev"
-
-        if not btn:
-            logger.error("Cannot find %s month button", direction)
-            return False
-
-        btn.click()
-        _human_delay(0.3, 0.6)
-        try:
-            page.wait_for_load_state("networkidle", timeout=10000)
-        except PwTimeout:
-            pass
-
-    logger.error(
-        "Could not navigate to %d-%02d after %d clicks",
-        target_year,
-        target_month,
-        max_clicks,
-    )
+            for i, mo in enumerate(["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"], 1):
+                if mo in txt.lower() and (y := re.search(r"20\d{2}", txt)): c_yr, c_mo = int(y.group()), i
+        if c_yr == t_yr and c_mo == t_mo: return True
+        btn_sel = ".calendar-next, .next, a:has(i[class*='right'])" if (t_yr*12+t_mo) > (c_yr*12+c_mo) else ".calendar-prev, .prev, a:has(i[class*='left'])"
+        page.locator(btn_sel).first.click()
+        _delay()
     return False
 
-
-# ────────────────────────────────────────────────────────────────────────
-# Date selection
-# ────────────────────────────────────────────────────────────────────────
-
-
-def _click_date(page: Page, target_day: int) -> bool:
-    """
-    Click a specific day number on the calendar.
-
-    Returns True if we found and clicked it.
-    """
-    day_str = str(target_day)
-
-    # Strategy 1: look for clickable date cells with the day number
-    date_selectors = [
-        f"td a:text-is('{day_str}')",
-        f"td:text-is('{day_str}'):not(.disabled):not(.unavailable)",
-        f"button:text-is('{day_str}')",
-        f".day:text-is('{day_str}')",
-        f"[data-day='{day_str}']",
-        f"a:text-is('{day_str}')",
-    ]
-
-    for sel in date_selectors:
-        try:
-            locator = page.locator(sel)
-            count = locator.count()
-            if count > 0:
-                # If multiple matches, try to find one that isn't disabled
-                for i in range(count):
-                    el = locator.nth(i)
-                    classes = el.get_attribute("class") or ""
-                    parent_classes = ""
-                    try:
-                        parent = el.locator("..")
-                        parent_classes = parent.get_attribute("class") or ""
-                    except Exception:
-                        pass
-
-                    all_classes = f"{classes} {parent_classes}".lower()
-                    if (
-                        "disabled" in all_classes
-                        or "unavailable" in all_classes
-                        or "past" in all_classes
-                    ):
-                        continue
-
-                    logger.info(
-                        "Clicking date %d with selector: %s", target_day, sel)
-                    el.click()
-                    return True
-        except Exception:
-            continue
-
-    # Strategy 2: broader search for any element containing just the day number
-    # within the calendar area
-    calendar_containers = [
-        ".calendar",
-        "[class*='calendar']",
-        ".datepicker",
-        "[class*='datepicker']",
-        "table",
-    ]
-    for container_sel in calendar_containers:
-        try:
-            container = page.query_selector(container_sel)
-            if not container:
-                continue
-            # Find all clickable elements within the calendar
-            links = container.query_selector_all(
-                "a, button, td[role='button'], div[role='button']"
-            )
-            for link in links:
-                text = (link.text_content() or "").strip()
-                if text == day_str:
-                    classes = (link.get_attribute("class") or "").lower()
-                    if "disabled" not in classes and "unavailable" not in classes:
-                        logger.info(
-                            "Clicking date %d via container search", target_day)
-                        link.click()
-                        return True
-        except Exception:
-            continue
-
-    logger.warning("Could not find clickable date %d on calendar", target_day)
-    return False
-
-
-# ────────────────────────────────────────────────────────────────────────
-# Party size selection
-# ────────────────────────────────────────────────────────────────────────
-
-
-def _select_party_size(page: Page, party_size: int) -> bool:
-    """
-    Attempt to set the party size if there's a selector for it.
-
-    Returns True if handled (or not needed), False on failure.
-    """
-    logger.info("Setting party size to %d", party_size)
-    
-    # 1. Try Omakase.in's semantic UI dropdown specifically
-    try:
-        dropdown = page.locator("label:has-text('Number of guests') + .ui.dropdown").first
-        if dropdown.is_visible():
-            logger.debug("Found Omakase semantic UI dropdown for party size")
-            dropdown.click()
-            _human_delay(0.2, 0.5)
-            option = dropdown.locator(f".menu .item:has-text('{party_size}')").first
-            if option.is_visible():
-                option.click()
-                _human_delay(0.2, 0.5)
-                return True
-            else:
-                logger.warning("Could not find option '%d' in dropdown", party_size)
-                # Click it again to close
-                dropdown.click()
-    except Exception as e:
-        logger.debug("Omakase party size dropdown error: %s", e)
-
-    # 2. Try standard HTML <select> tags
-    party_selectors = [
-        "select[name*='party']",
-        "select[name*='guest']",
-        "select[name*='people']",
-        "select[name*='pax']",
-        "select[name*='seats']",
-        "[class*='party-size'] select",
-        "[class*='guest-count'] select",
-    ]
-
-    for sel in party_selectors:
-        try:
-            el = page.query_selector(sel)
-            if el:
-                logger.debug("Found standard select for party size")
-                el.select_option(value=str(party_size))
-                _human_delay()
-                return True
-        except Exception:
-            continue
-
-    # 3. Try button-based party size (+ / - buttons)
-    try:
-        current = page.query_selector(
-            "[class*='party'] [class*='count'], [class*='guest'] [class*='count']"
-        )
-        if current:
-            current_val = int((current.text_content() or "2").strip())
-            diff = party_size - current_val
-            btn_sel = (
-                "[class*='party'] [class*='plus'], [class*='guest'] [class*='increment']"
-                if diff > 0
-                else "[class*='party'] [class*='minus'], [class*='guest'] [class*='decrement']"
-            )
-            btn = page.query_selector(btn_sel)
-            if btn:
-                logger.debug("Found plus/minus buttons for party size")
-                for _ in range(abs(diff)):
-                    btn.click()
-                    _human_delay(0.1, 0.3)
-                return True
-    except Exception:
-        pass
-
-    logger.debug("No party size selector found – may be pre-set or on next page")
-    return True  # Not necessarily an error
-
-
-# ────────────────────────────────────────────────────────────────────────
-# Time slot selection
-# ────────────────────────────────────────────────────────────────────────
-
-
-def _find_time_slots(page: Page) -> list[tuple[str, any]]:
-    """
-    Discover available time slots on the page.
-
-    Returns a list of (time_string, element) tuples.
-    """
-    import re
-
-    slots: list[tuple[str, any]] = []
-
-    # Common slot selectors
-    slot_selectors = [
-        "input[name='inventoryGroup'] + label",
-        ".p-rsv_c_select_item li label",
-        "a[class*='slot']",
-        "button[class*='slot']",
-        "div[class*='slot']",
-        "a[class*='time']",
-        "button[class*='time']",
-        ".available-slot",
-        ".time-slot",
-        "[data-time]",
-        "[class*='booking'] a",
-        "[class*='reservation'] a",
-    ]
-
-    for sel in slot_selectors:
-        try:
-            elements = page.query_selector_all(sel)
-            for el in elements:
-                text = (el.text_content() or "").strip()
-                classes = (el.get_attribute("class") or "").lower()
-
-                if (
-                    "disabled" in classes
-                    or "unavailable" in classes
-                    or "sold" in classes
-                ):
-                    continue
-
-                # Extract time pattern (e.g., "18:00", "6:00 PM")
-                time_match = re.search(r"(\d{1,2}:\d{2})", text)
-                if time_match:
-                    slots.append((time_match.group(1), el))
-                elif el.get_attribute("data-time"):
-                    slots.append((el.get_attribute("data-time"), el))
-        except Exception:
-            continue
-
-    # Deduplicate by time string
-    seen = set()
-    unique_slots = []
-    for time_str, el in slots:
-        if time_str not in seen:
-            seen.add(time_str)
-            unique_slots.append((time_str, el))
-
-    return unique_slots
-
-
-def _pick_best_slot(
-    slots: list[tuple[str, any]], preferred_time: str
-) -> Optional[tuple[str, any]]:
-    """
-    Pick the slot closest to the preferred time.
-
-    Returns (time_string, element) or None if no slots.
-    """
-    if not slots:
-        return None
-
-    def _time_to_minutes(t: str) -> int:
-        parts = t.split(":")
-        return int(parts[0]) * 60 + int(parts[1])
-
-    target_mins = _time_to_minutes(preferred_time)
-
-    best = None
-    best_diff = float("inf")
-    for time_str, el in slots:
-        try:
-            diff = abs(_time_to_minutes(time_str) - target_mins)
-            if diff < best_diff:
-                best_diff = diff
-                best = (time_str, el)
-        except (ValueError, IndexError):
-            continue
-
-    return best
-
-
-# ────────────────────────────────────────────────────────────────────────
-# Booking confirmation
-# ────────────────────────────────────────────────────────────────────────
-
-
-def _confirm_booking(page: Page, bm: BrowserManager, dry_run: bool = False, party_size: int = 1) -> bool:
-    """
-    Complete the booking after selecting a time slot.
-
-    This handles any confirmation pages/dialogs that appear.
-    If dry_run is True, stops right before clicking the final confirm button.
-    """
-    _human_delay(0.5, 1.0)
-    try:
-        page.wait_for_load_state("networkidle", timeout=10000)
-    except PwTimeout:
-        pass
-
-    # Try setting party size via Semantic UI dropdown if present
-    try:
-        dropdown = page.query_selector("label:has-text('Number of guests') + .ui.dropdown")
-        if dropdown:
-            dropdown.click()
-            _human_delay(0.2, 0.5)
-            option = page.query_selector(f".ui.dropdown .menu .item:text-is('{party_size}')")
-            if option:
-                option.click()
-                _human_delay(0.2, 0.5)
-    except Exception:
-        pass
-
-    # Look for confirmation / submit / book buttons
-    confirm_selectors = [
-        "button:has-text('Proceed to review')",
-        "button:has-text('Confirm')",
-        "button:has-text('confirm')",
-        "button:has-text('Complete')",
-        "button:has-text('Book')",
-        "button:has-text('Reserve')",
-        "button:has-text('Submit')",
-        "input[type='submit']",
-        "button[type='submit']",
-        "a:has-text('Confirm')",
-        "a:has-text('Complete')",
-        "[class*='confirm'] button",
-        "[class*='submit'] button",
-    ]
-
-    # There might be multiple confirmation steps
-    for step in range(3):
-        logger.debug("Confirmation step %d", step + 1)
-
-        btn = _find(page, confirm_selectors, timeout=5000)
-        if not btn:
-            # Check if we're already on a success page
-            if _is_booking_success(page):
-                return True
-            if step == 0:
-                logger.warning(
-                    "No confirmation button found – checking if booking went through"
-                )
-                _human_delay(1.0, 2.0)
-                if _is_booking_success(page):
-                    return True
-            break
-
-        logger.info("Found confirmation button (step %d)", step + 1)
-        btn_text = (btn.text_content() or "").strip().lower()
-
-        if dry_run and "review" not in btn_text:
-            logger.info("🧪 DRY RUN – stopping before final confirm click")
-            bm.screenshot("dry_run_before_confirm")
-            logger.info("Screenshot saved. Page URL: %s", page.url)
-            return True  # Treat as success for flow purposes
-
-        # Anti-bot timer: "Proceed to review" has a ~3s delay before it
-        # becomes clickable. Wait for it to be enabled before clicking.
-        if "review" in btn_text:
-            logger.info("Waiting for anti-bot timer on 'Proceed to review'…")
-            # Poll until the button is no longer disabled (up to 10s)
-            for _ in range(20):
-                is_disabled = btn.get_attribute("disabled")
-                classes = btn.get_attribute("class") or ""
-                if is_disabled is None and "disabled" not in classes and "loading" not in classes:
-                    break
-                time.sleep(0.5)
-            # Even if attributes look fine, the JS timer may still be running.
-            # Wait the full 4 seconds from when we first found the button.
-            _human_delay(3.5, 4.5)
-            logger.info("Anti-bot wait complete, clicking…")
-
-        logger.info("Clicking confirmation button (step %d)…", step + 1)
-        btn.click()
-        _human_delay(0.5, 1.5)
-
-        try:
-            page.wait_for_load_state("networkidle", timeout=10000)
-        except PwTimeout:
-            pass
-
-        if _is_booking_success(page):
-            return True
-
-    return _is_booking_success(page)
-
-
-def _is_booking_success(page: Page) -> bool:
-    """Check if the current page indicates a successful booking."""
-    success_indicators = [
-        "text='Reservation confirmed'",
-        "text='Booking confirmed'",
-        "text='reservation has been confirmed'",
-        "text='Successfully reserved'",
-        "text='Thank you'",
-        "text='予約が確定しました'",
-        "[class*='success']",
-        "[class*='confirmed']",
-        ".reservation-confirmed",
-    ]
-
-    for sel in success_indicators:
-        try:
-            el = page.query_selector(sel)
-            if el:
-                text = (el.text_content() or "").strip()
-                if text:
-                    logger.info("Success indicator found: %s", text[:100])
-                    return True
-        except Exception:
-            continue
-
-    # Also check URL for success indicators
-    url = page.url.lower()
-    if any(kw in url for kw in ["confirm", "success", "complete", "thank"]):
+def _click_date(page: Page, day: int) -> bool:
+    loc = page.locator(f"td:not(.disabled):not(.past):not(.unavailable) a:text-is('{day}'), a:not(.disabled):not(.unavailable):text-is('{day}'), .day:not(.disabled):text-is('{day}')").first
+    if loc.is_visible(timeout=2000):
+        loc.click()
         return True
-
+    page.screenshot(path=f"debug_click_date_failed_{day}.png")
     return False
 
-
-def _click_make_reservation(page: Page) -> bool:
-    """Click the 'Make a reservation' button on the restaurant page."""
-    selectors = [
-        "a[href*='/reservations/new']",
-        "a:has-text('Make a reservation')",
-        "button:has-text('Make a reservation')",
-        "[class*='reserve_action'] a",
-    ]
-    el = _find(page, selectors, timeout=3000)
-    if el:
-        logger.info("Found 'Make a reservation' button, clicking...")
-        el.click()
-        try:
-            page.wait_for_load_state("networkidle", timeout=10000)
-        except PwTimeout:
-            pass
-        _human_delay(0.5, 1.0)
-        return True
-    return False
-
-
-# ────────────────────────────────────────────────────────────────────────
-# Public API
-# ────────────────────────────────────────────────────────────────────────
-
-
-def check_availability(
-    bm: BrowserManager, config: BotConfig
-) -> tuple[BookingResult, Optional[str]]:
-    """
-    Navigate to the restaurant page and check for available slots on the target date.
-
-    Returns (result_status, matched_time_string_or_None).
-    Does NOT book – only checks.
-    """
-    page = bm.page
-    target = config.target_date
-
-    logger.info(
-        "Checking availability for %s at %s…", config.date, config.restaurant_id
+def _find_slots(page: Page) -> list[tuple[str, any]]:
+    slots = []
+    selectors = (
+        "input[name='inventoryGroup'] + label, "
+        ".p-rsv_c_select_item li label, "
+        "a[class*='slot'], button[class*='slot'], div[class*='slot'], "
+        "a[class*='time'], button[class*='time'], "
+        ".available-slot, .time-slot, [data-time]"
     )
+    for el in page.locator(selectors).all():
+        c = (el.get_attribute("class") or "").lower()
+        if "disabled" in c or "unavailable" in c or "sold" in c: continue
+        if m := re.search(r"(\d{1,2}:\d{2})", el.text_content() or ""): slots.append((m.group(1), el))
+        elif dt := el.get_attribute("data-time"): slots.append((dt, el))
+    return list({s[0]: s for s in slots}.values())
 
-    page.goto(config.restaurant_url, wait_until="domcontentloaded")
-    try:
-        page.wait_for_load_state("networkidle", timeout=10000)
-    except PwTimeout:
-        pass
-    _human_delay(0.5, 1.0)
+def _pick_best(slots: list[tuple[str, any]], pref: str) -> Optional[tuple[str, any]]:
+    if not slots: return None
+    return min(slots, key=lambda s: abs((int(s[0].split(":")[0])*60 + int(s[0].split(":")[1])) - (int(pref.split(":")[0])*60 + int(pref.split(":")[1]))))
 
-    # Click Make a reservation if on restaurant page
-    _click_make_reservation(page)
+def _confirm(page: Page, cfg: BotConfig) -> bool:
+    _delay()
+    try: page.locator("label:has-text('Number of guests') + .ui.dropdown").click(timeout=1000)
+    except: pass
+    try: page.locator(f".ui.dropdown .menu .item:text-is('{cfg.party_size}')").click(timeout=1000)
+    except: pass
 
-    # Set party size first (if applicable)
-    _select_party_size(page, config.party_size)
+    for _ in range(3):
+        if page.locator("text='Reservation confirmed', [class*='success']").first.is_visible(timeout=1000): return True
+        btn = page.locator("button:has-text('Proceed to review'), button:has-text('Confirm'), button:has-text('Complete')").first
+        if btn.is_visible(timeout=3000):
+            if cfg.dry_run and "review" not in (btn.text_content() or "").lower(): return True
+            try: btn.click(force=True)
+            except: pass
+            _delay(1, 2)
+    return page.locator("text='Reservation confirmed', [class*='success']").first.is_visible(timeout=2000)
 
-    # Navigate calendar to the right month
-    if not _navigate_to_month(page, target.year, target.month):
-        logger.warning("Could not navigate to target month")
-        bm.screenshot("cal_nav_failed")
+def check_availability(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str]]:
+    bm.page.goto(cfg.restaurant_url, wait_until="domcontentloaded")
+    bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
+    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
+    except: pass
+    if not _nav_month(bm.page, cfg.target_date.year, cfg.target_date.month) or not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None
-
-    # Click the target date
-    if not _click_date(page, target.day):
-        logger.info("Date %s does not appear to be available", config.date)
-        return BookingResult.DATE_UNAVAILABLE, None
-
-    _human_delay(0.5, 1.0)
-    try:
-        page.wait_for_load_state("networkidle", timeout=10000)
-    except PwTimeout:
-        pass
-
-    # Find available time slots
-    slots = _find_time_slots(page)
-    if not slots:
-        logger.info("No time slots available for %s", config.date)
-        return BookingResult.NO_SLOTS, None
-
-    logger.info(
-        "Found %d available slot(s): %s", len(
-            slots), ", ".join(t for t, _ in slots)
-    )
-
-    best = _pick_best_slot(slots, config.time)
-    if best:
-        return BookingResult.SUCCESS, best[0]
-
-    return BookingResult.NO_SLOTS, None
-
-
-def attempt_booking(
-    bm: BrowserManager, config: BotConfig
-) -> tuple[BookingResult, Optional[str]]:
-    """
-    Full booking attempt: navigate, find slot, and complete reservation.
-
-    Returns (result_status, booked_time_string_or_None).
-    """
-    page = bm.page
-    target = config.target_date
-
-    logger.info(
-        "Attempting booking for %s at %s (party of %d)…",
-        config.date,
-        config.restaurant_id,
-        config.party_size,
-    )
-
-    page.goto(config.restaurant_url, wait_until="domcontentloaded")
-    try:
-        page.wait_for_load_state("networkidle", timeout=10000)
-    except PwTimeout:
-        pass
-    _human_delay(0.3, 0.7)
-
-    # Click Make a reservation — this is required to initialize the React
-    # reservation form's session state properly
-    if not _click_make_reservation(page):
-        logger.info("Could not find 'Make a reservation' button (maybe restaurant is full)")
-        return BookingResult.NO_SLOTS, None
-
-    _human_delay(0.5, 1.0)
-    try:
-        page.wait_for_load_state("networkidle", timeout=10000)
-    except PwTimeout:
-        pass
-
-    # (Party size is selected after clicking the time slot, when the form appears)
-
-    # Navigate to the right month
-    if not _navigate_to_month(page, target.year, target.month):
-        bm.screenshot("booking_cal_nav_failed")
-        return BookingResult.DATE_UNAVAILABLE, None
-
-    # Click date
-    if not _click_date(page, target.day):
-        return BookingResult.DATE_UNAVAILABLE, None
-
-    _human_delay(0.3, 0.6)
-    try:
-        page.wait_for_load_state("networkidle", timeout=10000)
-    except PwTimeout:
-        pass
-
-    # Find and pick slot
-    slots = _find_time_slots(page)
-    if not slots:
-        logger.info("No slots available for %s", config.date)
-        return BookingResult.NO_SLOTS, None
-
-    logger.info("Available slots: %s", ", ".join(t for t, _ in slots))
-
-    best = _pick_best_slot(slots, config.time)
-    if not best:
-        return BookingResult.NO_SLOTS, None
-
-    time_str, slot_el = best
-    logger.info("Selecting slot: %s", time_str)
-
-    # Click the slot
-    slot_el.click()
-    _human_delay(0.5, 1.0)
+        
+    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
+    except: pass
+    bm.page.wait_for_timeout(500)
     
-    # Wait for the reservation form details panel to appear
-    try:
-        page.wait_for_selector(".p-rsv-detail", timeout=5000)
-    except PwTimeout:
-        logger.warning("Reservation detail panel did not appear after clicking slot")
+    best = _pick_best(_find_slots(bm.page), cfg.time)
+    return (BookingResult.SUCCESS, best[0]) if best else (BookingResult.NO_SLOTS, None)
 
-    # Set party size (the dropdown only appears now)
-    _select_party_size(page, config.party_size)
-    _human_delay(0.3, 0.6)
-
-    # Ensure course is explicitly selected if available (triggers React state binding)
-    try:
-        course_label = page.locator("input[name='course'] + label").first
-        if course_label.is_visible():
-            logger.info("Explicitly selecting course…")
-            course_label.click()
-            _human_delay(0.3, 0.6)
-    except Exception as e:
-        logger.debug("No course selection needed or failed: %s", e)
-
-    # Complete booking
-    if _confirm_booking(page, bm, dry_run=config.dry_run, party_size=config.party_size):
-        logger.info("✓ Booking confirmed for %s at %s!", config.date, time_str)
-        return BookingResult.SUCCESS, time_str
-
-    bm.screenshot("booking_confirm_failed")
-    return BookingResult.BOOKING_FAILED, time_str
-
-
-def quick_refresh_and_book(
-    bm: BrowserManager, config: BotConfig
-) -> tuple[BookingResult, Optional[str]]:
-    """
-    Fast-path booking: reload the current page and attempt to book.
-
-    Used in sniper mode for rapid retries without full navigation.
-    """
-    page = bm.page
-
-    page.reload(wait_until="domcontentloaded")
-    try:
-        page.wait_for_load_state("networkidle", timeout=10000)
-    except PwTimeout:
-        pass
-    _human_delay(0.1, 0.3)
-
-    target = config.target_date
-
-    # Try clicking the date directly (assume we're on the right month)
-    if not _click_date(page, target.day):
+def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str]]:
+    bm.page.goto(cfg.restaurant_url, wait_until="domcontentloaded")
+    bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
+    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
+    except: pass
+    if not _nav_month(bm.page, cfg.target_date.year, cfg.target_date.month) or not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None
+    
+    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
+    except: pass
+    bm.page.wait_for_timeout(500)
+    
+    best = _pick_best(_find_slots(bm.page), cfg.time)
+    if not best: return BookingResult.NO_SLOTS, None
+    best[1].click()
+    _delay()
+    try: bm.page.locator("input[name='course'] + label").first.click(timeout=1000)
+    except: pass
 
-    _human_delay(0.1, 0.3)
-    try:
-        page.wait_for_load_state("networkidle", timeout=10000)
-    except PwTimeout:
-        pass
+    return (BookingResult.SUCCESS, best[0]) if _confirm(bm.page, cfg) else (BookingResult.BOOKING_FAILED, best[0])
 
-    slots = _find_time_slots(page)
-    if not slots:
-        return BookingResult.NO_SLOTS, None
-
-    best = _pick_best_slot(slots, config.time)
-    if not best:
-        return BookingResult.NO_SLOTS, None
-
-    time_str, slot_el = best
-    logger.info("⚡ Sniper: clicking slot %s", time_str)
-    slot_el.click()
-    _human_delay(0.1, 0.3)
-
-    if _confirm_booking(page, bm, dry_run=config.dry_run, party_size=config.party_size):
-        return BookingResult.SUCCESS, time_str
-
-    return BookingResult.BOOKING_FAILED, time_str
+def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str]]:
+    bm.page.reload(wait_until="domcontentloaded")
+    if not _click_date(bm.page, cfg.target_date.day): return BookingResult.DATE_UNAVAILABLE, None
+    
+    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
+    except: pass
+    bm.page.wait_for_timeout(500)
+    
+    best = _pick_best(_find_slots(bm.page), cfg.time)
+    if not best: return BookingResult.NO_SLOTS, None
+    best[1].click()
+    _delay()
+    return (BookingResult.SUCCESS, best[0]) if _confirm(bm.page, cfg) else (BookingResult.BOOKING_FAILED, best[0])

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+import time
 from typing import Optional
 
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright
@@ -71,15 +72,14 @@ class BrowserManager:
         self._browser = launch(
             headless=self.config.headless,
             humanize=True,
-            backend="patchright",
-            timezone="Asia/Tokyo",
+            geoip=True,
             locale="en-US"
         )
         self._context = self._browser.new_context(
             viewport={"width": 1920, "height": 1080}
         )
         self._page = self._context.new_page()
-        
+
         # Block heavy assets to save proxy bandwidth
         self._page.route(
             "**/*",
@@ -137,6 +137,11 @@ class BrowserManager:
         src = path or self.config.session_path
         if not src.exists():
             logger.debug("No saved session at %s", src)
+            return False
+
+        if time.time() - src.stat().st_mtime > 24 * 60 * 60:
+            logger.warning(
+                "Saved session at %s is older than 24 hours – ignoring", src)
             return False
 
         try:

@@ -116,6 +116,10 @@ def run_sniper(bm: BrowserManager, config: BotConfig) -> bool:
 
     # ── Step 4: Rapid booking attempts ───────────────────────────────
     for attempt in range(1, config.max_attempts + 1):
+        if config.get_account_lock_remaining() > 0:
+            logger.info("Account is currently locked by another task. Sniper aborting.")
+            return False
+            
         start = time.monotonic()
 
         logger.info("━━━ Attempt %d/%d ━━━", attempt, config.max_attempts)
@@ -141,6 +145,7 @@ def run_sniper(bm: BrowserManager, config: BotConfig) -> bool:
         logger.debug("Attempt %d took %.2fs → %s", attempt, elapsed, result.value)
 
         if result == BookingResult.SUCCESS:
+            config.set_account_lock(5)
             if not config.auto_book:
                 notify_slot_found(config.date, booked_time or config.time, config.restaurant_id, url, config.discord_webhook_url, config.discord_user_id)
                 logger.info("Manual hold successful – exiting with notification only")
@@ -148,6 +153,11 @@ def run_sniper(bm: BrowserManager, config: BotConfig) -> bool:
                 notify_booking_success(config.date, booked_time or config.time, config.restaurant_id, url, config.discord_webhook_url, config.discord_user_id)
             bm.screenshot("sniper_success")
             return True
+
+        if result == BookingResult.ALREADY_BOOKED:
+            logger.warning("Account is holding a reservation for another restaurant. Sniper aborting.")
+            config.set_account_lock(5)
+            return False
 
         if result == BookingResult.BOOKING_FAILED:
             notify_booking_failed(f"Slot found but booking failed (attempt {attempt})")

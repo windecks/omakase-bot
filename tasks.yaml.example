@@ -1,0 +1,19 @@
+tasks:
+  - mode: monitor
+    email: "user1@example.com"
+    password: "password123"
+    restaurant_id: "rn12345"
+    date: "2026-07-20"
+    time: "18:00"
+    party_size: 2
+    proxy: "http://user:pass@proxy.example.com:8000"
+
+  - mode: sniper
+    email: "user2@example.com"
+    password: "password456"
+    restaurant_id: "bh222595"
+    date: "2026-08-01"
+    time: "19:00"
+    party_size: 1
+    release_time: "12:00"
+    proxy: "http://user:pass@proxy.example.com:8000"

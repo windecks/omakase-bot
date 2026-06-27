@@ -63,6 +63,45 @@ python main.py --config config.yaml --mode monitor --check-interval 300
 
 ---
 
+## 🚀 Fleet Mode (Multi-Instance)
+
+For production deployments where you want to monitor or snipe **multiple restaurants simultaneously** (or use multiple accounts), use the `fleet.py` manager.
+
+1. Copy the example tasks config:
+   ```bash
+   cp tasks.yaml.example tasks.yaml
+   ```
+2. Define as many tasks as you want. Each task runs in an isolated process with its own session cookies.
+3. Run the fleet:
+   ```bash
+   python fleet.py tasks.yaml
+   ```
+
+**Features:**
+- **Self-Healing:** If a monitor task crashes, the fleet manager automatically restarts it.
+- **Auto-Updates:** Checks for `cloakbrowser` PyPI updates every 24h and safely reloads the fleet if found.
+- **Session Isolation:** Tasks using different emails automatically get their own isolated cookie jars in the `sessions/` folder to prevent account mixing.
+
+---
+
+## 🐳 Docker Deployment
+
+The best way to run Fleet Mode 24/7 on a VPS is via Docker. This ensures all Chrome/Linux C++ dependencies are perfectly isolated.
+
+```bash
+# Build the image
+docker build -t omakase-bot .
+
+# Run in background, mounting your config and sessions
+docker run -d \
+  --name omakase-fleet \
+  -v $(pwd)/sessions:/app/sessions \
+  -v $(pwd)/tasks.yaml:/app/tasks.yaml \
+  omakase-bot
+```
+
+---
+
 ## ⚙️ Configuration
 
 ### YAML Config File
@@ -94,6 +133,8 @@ check_interval: 300             # Seconds between checks
 
 # Browser
 headless: true                  # false = show browser window
+proxy: "http://user:pass@host:port"  # Optional residential proxy
+
 ```
 
 ### CLI Overrides
@@ -132,6 +173,7 @@ python main.py \
 | `--max-attempts` | Max sniper retries | `100` |
 | `--check-interval` | Monitor poll interval (seconds) | `300` |
 | `--headless` | Run browser headless | `true` |
+| `--proxy` | Residential proxy URL | – |
 
 ---
 
@@ -182,8 +224,11 @@ All actions are logged to stdout with timestamps and color coding.
 
 ```
 omakase-bot/
-├── main.py                 # CLI entry point
-├── config.example.yaml     # Example configuration
+├── main.py                 # Single-task CLI entry point
+├── fleet.py                # Multi-task Fleet Manager
+├── config.example.yaml     # Single-task config template
+├── tasks.yaml.example      # Multi-task config template
+├── Dockerfile              # Docker container definition
 ├── requirements.txt        # Python dependencies
 ├── src/
 │   ├── __init__.py

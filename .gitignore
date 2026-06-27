@@ -15,6 +15,7 @@ venv/
 !config.example.yaml
 .env
 session.json
+sessions/
 
 # ─── Debug ──────────────────────────────────────
 debug_*.png

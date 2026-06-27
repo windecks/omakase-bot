@@ -69,12 +69,17 @@ class BrowserManager:
         logger.info("Launching browser (headless=%s)…", self.config.headless)
 
         self._pw = None
-        self._browser = launch(
-            headless=self.config.headless,
-            humanize=True,
-            geoip=True,
-            locale="en-US"
-        )
+        launch_args = {
+            "headless": self.config.headless,
+            "humanize": True,
+            "geoip": True,
+            "locale": "en-US",
+        }
+        if getattr(self.config, "proxy", None):
+            launch_args["proxy"] = {"server": self.config.proxy}
+            logger.info("Using proxy: %s", self.config.proxy)
+            
+        self._browser = launch(**launch_args)
         self._context = self._browser.new_context(
             viewport={"width": 1920, "height": 1080}
         )

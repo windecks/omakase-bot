@@ -1,6 +1,6 @@
 """Configuration loading and validation."""
 from __future__ import annotations
-import argparse, logging, sys
+import argparse, logging, sys, time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -25,10 +25,36 @@ class BotConfig:
     max_attempts: int = 100
     check_interval: int = 300
     headless: bool = True
+    proxy: str = ""
     project_root: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
 
     @property
-    def session_path(self) -> Path: return self.project_root / "session.json"
+    def session_path(self) -> Path:
+        safe_email = "".join(c for c in self.email if c.isalnum() or c in "._-@") or "default"
+        sessions_dir = self.project_root / "sessions"
+        sessions_dir.mkdir(exist_ok=True)
+        return sessions_dir / f"session_{safe_email}.json"
+        
+    @property
+    def account_lock_path(self) -> Path:
+        safe_email = "".join(c for c in self.email if c.isalnum() or c in "._-@") or "default"
+        sessions_dir = self.project_root / "sessions"
+        sessions_dir.mkdir(exist_ok=True)
+        return sessions_dir / f"hold_lock_{safe_email}.txt"
+
+    def set_account_lock(self, minutes: int = 5):
+        expiry = time.time() + (minutes * 60)
+        self.account_lock_path.write_text(str(expiry))
+
+    def get_account_lock_remaining(self) -> float:
+        try:
+            if self.account_lock_path.exists():
+                expiry = float(self.account_lock_path.read_text().strip())
+                return max(0.0, expiry - time.time())
+        except:
+            pass
+        return 0.0
+
     @property
     def restaurant_url(self) -> str: return f"https://omakase.in/en/r/{self.restaurant_id}"
     @property

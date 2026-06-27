@@ -180,6 +180,11 @@ def _confirm(page: Page, cfg: BotConfig, skip_guest_select: bool = False) -> boo
 
 def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str], Optional[str]]:
     bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
+    
+    if "/review" in bm.page.url or "/complete" in bm.page.url:
+        logger.warning("Account already holds a pending reservation: %s", bm.page.url)
+        return BookingResult.ALREADY_BOOKED, None, None
+        
     # Redirect to main restaurant page can happen after a recent cancellation
     if "reservations/new" not in bm.page.url:
         logger.warning(
@@ -221,7 +226,12 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
         pass
 
     success = _confirm(bm.page, cfg, skip_guest_select=(best[1] == best[2]))
-    return (BookingResult.SUCCESS, best[0], bm.page.url) if success else (BookingResult.BOOKING_FAILED, best[0], None)
+    if success:
+        if cfg.restaurant_id not in bm.page.url:
+            logger.warning("Cross-reservation collision! Redirected to %s", bm.page.url)
+            return BookingResult.ALREADY_BOOKED, None, None
+        return BookingResult.SUCCESS, best[0], bm.page.url
+    return BookingResult.BOOKING_FAILED, best[0], None
 
 
 def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str], Optional[str]]:
@@ -256,4 +266,9 @@ def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingR
         return BookingResult.NO_SLOTS, None, None
     best[3].click()
     success = _confirm(bm.page, cfg, skip_guest_select=(best[1] == best[2]))
-    return (BookingResult.SUCCESS, best[0], bm.page.url) if success else (BookingResult.BOOKING_FAILED, best[0], None)
+    if success:
+        if cfg.restaurant_id not in bm.page.url:
+            logger.warning("Cross-reservation collision! Redirected to %s", bm.page.url)
+            return BookingResult.ALREADY_BOOKED, None, None
+        return BookingResult.SUCCESS, best[0], bm.page.url
+    return BookingResult.BOOKING_FAILED, best[0], None

@@ -69,6 +69,12 @@ def run_monitor(bm: BrowserManager, config: BotConfig) -> bool:
 
     try:
         while not _shutdown_requested:
+            rem = config.get_account_lock_remaining()
+            if rem > 0:
+                logger.info("Account is currently locked by another task. Sleeping for %.0fs...", rem)
+                _wait_interval(int(rem) + 5)
+                continue
+                
             check_number += 1
             logger.info("━━━ Check #%d ━━━", check_number)
 
@@ -87,7 +93,8 @@ def run_monitor(bm: BrowserManager, config: BotConfig) -> bool:
                 continue
 
             if result == BookingResult.SUCCESS and found_time:
-                # Slot found!
+                # Slot found! Set lock to silence other tasks on this account for 5 mins
+                config.set_account_lock(5)
                 if not config.auto_book:
                     notify_slot_found(config.date, found_time, config.restaurant_id, url, config.discord_webhook_url, config.discord_user_id)
                     logger.info(
@@ -99,6 +106,10 @@ def run_monitor(bm: BrowserManager, config: BotConfig) -> bool:
                     bm.screenshot("monitor_success")
                     return True
 
+            elif result == BookingResult.ALREADY_BOOKED:
+                logger.warning("Account is holding another reservation. Setting lock for 5 minutes.")
+                config.set_account_lock(5)
+                continue
             elif result == BookingResult.DATE_UNAVAILABLE:
                 logger.info(
                     "Date %s not yet available on calendar", config.date)

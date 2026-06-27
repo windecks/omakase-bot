@@ -42,7 +42,8 @@ def _click_date(page: Page, day: int) -> bool:
     page.screenshot(path=f"debug_click_date_failed_{day}.png")
     return False
 
-def _find_slots(page: Page) -> list[tuple[str, any]]:
+def _find_slots(page: Page) -> list[tuple[str, int, int, any]]:
+    """Find available slots, returning (time, min_guests, max_guests, element)."""
     slots = []
     selectors = (
         "input[name='inventoryGroup'] + label, "
@@ -54,19 +55,39 @@ def _find_slots(page: Page) -> list[tuple[str, any]]:
     for el in page.locator(selectors).all():
         c = (el.get_attribute("class") or "").lower()
         if "disabled" in c or "unavailable" in c or "sold" in c: continue
-        if m := re.search(r"(\d{1,2}:\d{2})", el.text_content() or ""): slots.append((m.group(1), el))
-        elif dt := el.get_attribute("data-time"): slots.append((dt, el))
+        text = el.text_content() or ""
+        time_str = None
+        if m := re.search(r"(\d{1,2}:\d{2})", text): time_str = m.group(1)
+        elif dt := el.get_attribute("data-time"): time_str = dt
+        if not time_str: continue
+        # Extract guest count: "1-2guest(s)" or "2guest(s)"
+        min_g, max_g = 0, 99
+        if gm := re.search(r"(\d+)-(\d+)\s*guest", text, re.IGNORECASE):
+            min_g, max_g = int(gm.group(1)), int(gm.group(2))
+        elif gm := re.search(r"(\d+)\s*guest", text, re.IGNORECASE):
+            min_g = max_g = int(gm.group(1))
+        slots.append((time_str, min_g, max_g, el))
     return list({s[0]: s for s in slots}.values())
 
-def _pick_best(slots: list[tuple[str, any]], pref: str) -> Optional[tuple[str, any]]:
+def _filter_by_guests(slots: list[tuple[str, int, int, any]], party_size: int) -> list[tuple[str, int, int, any]]:
+    """Keep only slots that accept the desired party size."""
+    filtered = [s for s in slots if s[1] <= party_size <= s[2]]
+    if filtered:
+        return filtered
+    # Fall back to all slots if none match (avoids silent failure)
+    logger.warning("No slots match party_size=%d, trying all %d slots", party_size, len(slots))
+    return slots
+
+def _pick_best(slots: list[tuple[str, int, int, any]], pref: str) -> Optional[tuple[str, int, int, any]]:
     if not slots: return None
     return min(slots, key=lambda s: abs((int(s[0].split(":")[0])*60 + int(s[0].split(":")[1])) - (int(pref.split(":")[0])*60 + int(pref.split(":")[1]))))
 
-def _confirm(page: Page, cfg: BotConfig) -> bool:
-    try: page.locator("label:has-text('Number of guests') + .ui.dropdown").click(timeout=100)
-    except: pass
-    try: page.locator(f".ui.dropdown .menu .item:text-is('{cfg.party_size}')").click(timeout=100)
-    except: pass
+def _confirm(page: Page, cfg: BotConfig, skip_guest_select: bool = False) -> bool:
+    if not skip_guest_select:
+        try: page.locator("label:has-text('Number of guests') + .ui.dropdown").click(timeout=100)
+        except: pass
+        try: page.locator(f".ui.dropdown .menu .item:text-is('{cfg.party_size}')").click(timeout=100)
+        except: pass
 
     for _ in range(3):
         if page.locator("text='Reservation confirmed', [class*='success']").first.is_visible(timeout=1000): return True
@@ -111,13 +132,14 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
             break
         bm.page.wait_for_timeout(200)
     
+    slots = _filter_by_guests(slots, cfg.party_size)
     best = _pick_best(slots, cfg.time)
     if not best: return BookingResult.NO_SLOTS, None, None
-    best[1].click()
+    best[3].click()
     try: bm.page.locator("input[name='course'] + label").first.click(timeout=1000)
     except: pass
 
-    success = _confirm(bm.page, cfg)
+    success = _confirm(bm.page, cfg, skip_guest_select=(best[1] == best[2]))
     return (BookingResult.SUCCESS, best[0], bm.page.url) if success else (BookingResult.BOOKING_FAILED, best[0], None)
 
 def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str], Optional[str]]:
@@ -138,8 +160,9 @@ def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingR
             break
         bm.page.wait_for_timeout(200)
     
+    slots = _filter_by_guests(slots, cfg.party_size)
     best = _pick_best(slots, cfg.time)
     if not best: return BookingResult.NO_SLOTS, None, None
-    best[1].click()
-    success = _confirm(bm.page, cfg)
+    best[3].click()
+    success = _confirm(bm.page, cfg, skip_guest_select=(best[1] == best[2]))
     return (BookingResult.SUCCESS, best[0], bm.page.url) if success else (BookingResult.BOOKING_FAILED, best[0], None)

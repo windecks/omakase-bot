@@ -139,9 +139,9 @@ class BrowserManager:
             logger.debug("No saved session at %s", src)
             return False
 
-        if time.time() - src.stat().st_mtime > 24 * 60 * 60:
+        if time.time() - src.stat().st_mtime > 30 * 60:
             logger.warning(
-                "Saved session at %s is older than 24 hours – ignoring", src)
+                "Saved session at %s is older than 30 minutes – ignoring", src)
             return False
 
         try:

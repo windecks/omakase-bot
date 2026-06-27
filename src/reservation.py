@@ -32,7 +32,6 @@ def _nav_month(page: Page, t_yr: int, t_mo: int) -> bool:
         if c_yr == t_yr and c_mo == t_mo: return True
         btn_sel = ".calendar-next, .next, a:has(i[class*='right'])" if (t_yr*12+t_mo) > (c_yr*12+c_mo) else ".calendar-prev, .prev, a:has(i[class*='left'])"
         page.locator(btn_sel).first.click()
-        _delay()
     return False
 
 def _click_date(page: Page, day: int) -> bool:
@@ -64,10 +63,9 @@ def _pick_best(slots: list[tuple[str, any]], pref: str) -> Optional[tuple[str, a
     return min(slots, key=lambda s: abs((int(s[0].split(":")[0])*60 + int(s[0].split(":")[1])) - (int(pref.split(":")[0])*60 + int(pref.split(":")[1]))))
 
 def _confirm(page: Page, cfg: BotConfig) -> bool:
-    _delay()
-    try: page.locator("label:has-text('Number of guests') + .ui.dropdown").click(timeout=1000)
+    try: page.locator("label:has-text('Number of guests') + .ui.dropdown").click(timeout=100)
     except: pass
-    try: page.locator(f".ui.dropdown .menu .item:text-is('{cfg.party_size}')").click(timeout=1000)
+    try: page.locator(f".ui.dropdown .menu .item:text-is('{cfg.party_size}')").click(timeout=100)
     except: pass
 
     for _ in range(3):
@@ -91,16 +89,17 @@ def _confirm(page: Page, cfg: BotConfig) -> bool:
     return page.locator("text='Reservation confirmed', [class*='success']").first.is_visible(timeout=2000)
 
 def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str], Optional[str]]:
-    bm.page.goto(cfg.restaurant_url, wait_until="domcontentloaded")
     bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
-    try: bm.page.wait_for_load_state("networkidle", timeout=3000)
-    except: pass
+    # Redirect to main restaurant page can happen after a recent cancellation
+    if "reservations/new" not in bm.page.url:
+        logger.warning("Redirected to %s – retrying reservation page", bm.page.url)
+        bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
     if not _nav_month(bm.page, cfg.target_date.year, cfg.target_date.month) or not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None, None
     
-    try: bm.page.locator(".p-rsv_c_empty").wait_for(state="hidden", timeout=4000)
+    try: bm.page.locator(".p-rsv_c_empty").wait_for(state="hidden", timeout=2000)
     except: pass
-    try: bm.page.locator(".ui.active.dimmer, .loading, .loader").wait_for(state="hidden", timeout=4000)
+    try: bm.page.locator(".ui.active.dimmer, .loading, .loader").wait_for(state="hidden", timeout=2000)
     except: pass
     
     slots = []
@@ -115,7 +114,6 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
     best = _pick_best(slots, cfg.time)
     if not best: return BookingResult.NO_SLOTS, None, None
     best[1].click()
-    _delay()
     try: bm.page.locator("input[name='course'] + label").first.click(timeout=1000)
     except: pass
 
@@ -126,9 +124,9 @@ def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingR
     bm.page.reload(wait_until="domcontentloaded")
     if not _click_date(bm.page, cfg.target_date.day): return BookingResult.DATE_UNAVAILABLE, None, None
     
-    try: bm.page.locator(".p-rsv_c_empty").wait_for(state="hidden", timeout=4000)
+    try: bm.page.locator(".p-rsv_c_empty").wait_for(state="hidden", timeout=2000)
     except: pass
-    try: bm.page.locator(".ui.active.dimmer, .loading, .loader").wait_for(state="hidden", timeout=4000)
+    try: bm.page.locator(".ui.active.dimmer, .loading, .loader").wait_for(state="hidden", timeout=2000)
     except: pass
     
     slots = []
@@ -143,6 +141,5 @@ def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingR
     best = _pick_best(slots, cfg.time)
     if not best: return BookingResult.NO_SLOTS, None, None
     best[1].click()
-    _delay()
     success = _confirm(bm.page, cfg)
     return (BookingResult.SUCCESS, best[0], bm.page.url) if success else (BookingResult.BOOKING_FAILED, best[0], None)

@@ -104,12 +104,11 @@ def run_sniper(bm: BrowserManager, config: BotConfig) -> bool:
         logger.error("Login failed – cannot proceed")
         return False
 
-    # ── Step 2: Navigate to restaurant page ──────────────────────────
-    logger.info("Pre-loading restaurant page: %s", config.restaurant_url)
-    page.goto(config.restaurant_url, wait_until="domcontentloaded")
-    page.wait_for_load_state("networkidle")
+    # ── Step 2: Pre-load reservation page ────────────────────────────
+    logger.info("Pre-loading reservation page: %s", config.reservation_url)
+    page.goto(config.reservation_url, wait_until="domcontentloaded")
 
-    logger.info("Restaurant page loaded. Waiting for release time…")
+    logger.info("Reservation page loaded. Waiting for release time…")
 
     # ── Step 3: Wait for release ─────────────────────────────────────
     release_h, release_m = _parse_release_time(config.release_time)

@@ -16,9 +16,13 @@ from src.sniper import run_sniper
 from src.monitor import run_monitor
 from src.notifications import setup_logging
 
-def run_task(task_dict: dict) -> bool:
+def run_task(task_dict: dict, startup_delay: int = 0) -> bool:
     """Worker function to execute a single bot task."""
     setup_logging()
+    
+    if startup_delay > 0:
+        logging.info("Staggering task start: waiting %ds for %s...", startup_delay, task_dict.get("restaurant_id", "unknown"))
+        time.sleep(startup_delay)
     
     # Initialize config
     cfg = BotConfig()
@@ -78,7 +82,9 @@ def main():
     
     # Run processes
     with ProcessPoolExecutor(max_workers=len(tasks)) as executor:
-        futures = {executor.submit(run_task, t): t for t in tasks}
+        futures = {}
+        for i, t in enumerate(tasks):
+            futures[executor.submit(run_task, t, i * 60)] = t
         
         import concurrent.futures
         import subprocess
@@ -122,7 +128,7 @@ def main():
                         else:
                             logging.info("Restarting monitor task in 10s: %s", task_dict.get("restaurant_id"))
                             time.sleep(10)
-                            futures[executor.submit(run_task, task_dict)] = task_dict
+                            futures[executor.submit(run_task, task_dict, 0)] = task_dict
             except concurrent.futures.TimeoutError:
                 # Expected timeout every 60s if no tasks complete, allows loop to re-evaluate the update timer
                 pass

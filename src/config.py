@@ -9,6 +9,8 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+SESSION_EXPIRY_MINUTES = 60 * 9
+
 @dataclass
 class BotConfig:
     email: str = ""

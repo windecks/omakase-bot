@@ -46,6 +46,7 @@ class BrowserManager:
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
+        self.session_start_time = 0.0
 
     # ── Properties ───────────────────────────────────────────────────
 
@@ -130,6 +131,7 @@ class BrowserManager:
         dest = path or self.config.session_path
         cookies = self.context.cookies()
         dest.write_text(json.dumps(cookies, indent=2), encoding="utf-8")
+        self.session_start_time = time.time()
         logger.info("Session saved → %s (%d cookies)", dest, len(cookies))
 
     def load_cookies(self, path: Optional[Path] = None) -> bool:
@@ -144,14 +146,16 @@ class BrowserManager:
             logger.debug("No saved session at %s", src)
             return False
 
-        if time.time() - src.stat().st_mtime > 30 * 60:
+        from src.config import SESSION_EXPIRY_MINUTES
+        if time.time() - src.stat().st_mtime > SESSION_EXPIRY_MINUTES * 60:
             logger.warning(
-                "Saved session at %s is older than 30 minutes – ignoring", src)
+                "Saved session at %s is older than %d minutes – ignoring", src, SESSION_EXPIRY_MINUTES)
             return False
 
         try:
             cookies = json.loads(src.read_text(encoding="utf-8"))
             self.context.add_cookies(cookies)
+            self.session_start_time = src.stat().st_mtime
             logger.info("Restored %d cookies from %s", len(cookies), src)
             return True
         except (json.JSONDecodeError, KeyError) as exc:

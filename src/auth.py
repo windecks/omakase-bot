@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from playwright.sync_api import Page
 from src.browser import BrowserManager
-from src.config import BotConfig
+from src.config import BotConfig, SESSION_EXPIRY_MINUTES
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,11 @@ def login(bm: BrowserManager, config: BotConfig) -> bool:
     return _do_login(bm, config)
 
 def ensure_logged_in(bm: BrowserManager, config: BotConfig) -> bool:
+    if bm.session_start_time and (time.time() - bm.session_start_time > SESSION_EXPIRY_MINUTES * 60):
+        logger.warning("Active session is older than %d minutes. Forcing a refresh.", SESSION_EXPIRY_MINUTES)
+        bm.context.clear_cookies()
+        return _do_login(bm, config)
+        
     return True if _is_logged_in(bm.page) else _do_login(bm, config)
 
 def _do_login(bm: BrowserManager, config: BotConfig) -> bool:

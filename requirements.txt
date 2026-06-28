@@ -1,4 +1,7 @@
 playwright
 playwright-stealth
 pyyaml
-cloakbrowser[patchright]
+cloakbrowser
+python-geoip
+playwright
+patchright

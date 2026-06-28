@@ -22,6 +22,44 @@ class BookingResult(Enum):
     ANTIBOT_TRIGGERED = "antibot_triggered"
 
 
+def _handle_redirect(bm: BrowserManager, cfg: BotConfig) -> Optional[BookingResult]:
+    """Handle slow redirects by waiting for either the calendar or the main page reserve button."""
+    calendar_loc = bm.page.locator(".calendar-header, .datepicker-switch").first
+    reserve_container = bm.page.locator(".p-r_reserve_action_reserve").first
+    any_loc = bm.page.locator(".calendar-header, .datepicker-switch, .p-r_reserve_action_reserve").first
+
+    for attempt in range(2):
+        try:
+            any_loc.wait_for(state="visible", timeout=5000)
+        except:
+            pass 
+
+        if calendar_loc.is_visible():
+            return None
+            
+        if reserve_container.is_visible():
+            if attempt == 0:
+                logger.warning("Redirected to main page (detected reserve container).")
+            
+            if reserve_container.locator(".disabled.button").is_visible():
+                logger.info("Restaurant is fully booked out (disabled button present).")
+                return BookingResult.NO_SLOTS
+                
+            active_link = reserve_container.locator("a[href*='reservations/new']").first
+            if attempt == 0 and active_link.is_visible():
+                logger.info("Reservation link is active! Retrying by clicking it...")
+                try:
+                    with bm.page.expect_navigation(timeout=5000):
+                        active_link.click()
+                    continue
+                except Exception as e:
+                    logger.debug("Failed to navigate after clicking active link: %s", e)
+                    
+            logger.warning("Failed to reach reservation calendar.")
+            return BookingResult.BOOKING_FAILED
+
+    return None
+
 def _delay(low=0.2, high=0.5): time.sleep(random.uniform(low, high))
 
 
@@ -186,18 +224,8 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
         logger.warning("Account already holds a pending reservation: %s", bm.page.url)
         return BookingResult.ALREADY_BOOKED, None, None
         
-    # Redirect to main restaurant page can happen if fully booked out or after cancellation
-    if "reservations/new" not in bm.page.url:
-        logger.warning("Redirected to %s – retrying reservation page", bm.page.url)
-        bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
-        
-        # If it STILL redirects after the retry, it is truly fully booked (or broken)
-        if "reservations/new" not in bm.page.url:
-            if bm.page.url.rstrip("/") == cfg.restaurant_url.rstrip("/"):
-                logger.info("Restaurant is fully booked out (redirected to main page twice).")
-                return BookingResult.NO_SLOTS, None, None
-            logger.warning("Failed to reach reservation page even after retry: %s", bm.page.url)
-            return BookingResult.BOOKING_FAILED, None, None
+    redirect_res = _handle_redirect(bm, cfg)
+    if redirect_res: return redirect_res, None, None
         
     if not _nav_month(bm.page, cfg.target_date.year, cfg.target_date.month) or not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None, None
@@ -251,16 +279,8 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
 def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str], Optional[str]]:
     bm.page.reload(wait_until="domcontentloaded")
     
-    if "reservations/new" not in bm.page.url:
-        logger.warning("Redirected to %s during reload – retrying reservation page", bm.page.url)
-        bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
-        
-        if "reservations/new" not in bm.page.url:
-            if bm.page.url.rstrip("/") == cfg.restaurant_url.rstrip("/"):
-                logger.info("Restaurant is fully booked out (redirected to main page).")
-                return BookingResult.NO_SLOTS, None, None
-            logger.warning("Redirected unexpectedly even after retry: %s", bm.page.url)
-            return BookingResult.BOOKING_FAILED, None, None
+    redirect_res = _handle_redirect(bm, cfg)
+    if redirect_res: return redirect_res, None, None
         
     if not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None, None

@@ -131,6 +131,7 @@ def main():
                             futures[executor.submit(run_task, task_dict, 0)] = task_dict
             except concurrent.futures.TimeoutError:
                 # Expected timeout every 60s if no tasks complete, allows loop to re-evaluate the update timer
+                pass
     
         logging.info("All tasks completed successfully. Idling to prevent Docker from restarting the container...")
         while True:

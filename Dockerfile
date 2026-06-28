@@ -9,10 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY . .
 
-# Create non-root user for Chromium sandbox security
-RUN useradd -m -s /bin/bash botuser \
-    && chown -R botuser:botuser /app
-USER botuser
 
 # Volumes for persistent sessions and configuration
 VOLUME ["/app/sessions", "/app/config"]

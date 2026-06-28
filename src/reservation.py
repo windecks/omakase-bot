@@ -186,15 +186,18 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
         logger.warning("Account already holds a pending reservation: %s", bm.page.url)
         return BookingResult.ALREADY_BOOKED, None, None
         
-    # Redirect to main restaurant page means calendar is inaccessible (fully booked)
+    # Redirect to main restaurant page can happen if fully booked out or after cancellation
     if "reservations/new" not in bm.page.url:
-        if bm.page.url.rstrip("/") == cfg.restaurant_url.rstrip("/"):
-            logger.info("Restaurant is fully booked out (redirected to main page).")
-            return BookingResult.NO_SLOTS, None, None
-            
-        logger.warning(
-            "Redirected to %s – retrying reservation page", bm.page.url)
+        logger.warning("Redirected to %s – retrying reservation page", bm.page.url)
         bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
+        
+        # If it STILL redirects after the retry, it is truly fully booked (or broken)
+        if "reservations/new" not in bm.page.url:
+            if bm.page.url.rstrip("/") == cfg.restaurant_url.rstrip("/"):
+                logger.info("Restaurant is fully booked out (redirected to main page twice).")
+                return BookingResult.NO_SLOTS, None, None
+            logger.warning("Failed to reach reservation page even after retry: %s", bm.page.url)
+            return BookingResult.BOOKING_FAILED, None, None
         
     if not _nav_month(bm.page, cfg.target_date.year, cfg.target_date.month) or not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None, None
@@ -249,12 +252,15 @@ def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingR
     bm.page.reload(wait_until="domcontentloaded")
     
     if "reservations/new" not in bm.page.url:
-        if bm.page.url.rstrip("/") == cfg.restaurant_url.rstrip("/"):
-            logger.info("Restaurant is fully booked out (redirected to main page).")
-            return BookingResult.NO_SLOTS, None, None
-            
-        logger.warning("Redirected unexpectedly during reload: %s", bm.page.url)
-        return BookingResult.BOOKING_FAILED, None, None
+        logger.warning("Redirected to %s during reload – retrying reservation page", bm.page.url)
+        bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
+        
+        if "reservations/new" not in bm.page.url:
+            if bm.page.url.rstrip("/") == cfg.restaurant_url.rstrip("/"):
+                logger.info("Restaurant is fully booked out (redirected to main page).")
+                return BookingResult.NO_SLOTS, None, None
+            logger.warning("Redirected unexpectedly even after retry: %s", bm.page.url)
+            return BookingResult.BOOKING_FAILED, None, None
         
     if not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None, None

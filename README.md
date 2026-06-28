@@ -86,7 +86,26 @@ For production deployments where you want to monitor or snipe **multiple restaur
 
 ## 🐳 Docker Deployment
 
-The best way to run Fleet Mode 24/7 on a VPS is via Docker. This ensures all Chrome/Linux C++ dependencies are perfectly isolated.
+The best way to run Fleet Mode 24/7 on a VPS is via Docker. The image is **multi-arch** (works on x86_64 and ARM64/aarch64), so it runs on everything from a DigitalOcean droplet to an Oracle Cloud free-tier ARM instance.
+
+### Recommended: Docker Compose
+
+```bash
+# Edit tasks.yaml with your targets, then:
+docker compose up -d --build
+```
+
+This gives you auto-restart on crash/reboot, resource limits, and log rotation out of the box. See `docker-compose.yml` for tuning options.
+
+```bash
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+### Alternative: Manual Docker Run
 
 ```bash
 # Build the image
@@ -95,8 +114,9 @@ docker build -t omakase-bot .
 # Run in background, mounting your config and sessions
 docker run -d \
   --name omakase-fleet \
+  --restart unless-stopped \
   -v $(pwd)/sessions:/app/sessions \
-  -v $(pwd)/tasks.yaml:/app/tasks.yaml \
+  -v $(pwd)/tasks.yaml:/app/tasks.yaml:ro \
   omakase-bot
 ```
 

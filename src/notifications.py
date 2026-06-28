@@ -124,7 +124,7 @@ def setup_logging(verbose: bool = False) -> None:
 # ────────────────────────────────────────────────────────────────────────
 
 def play_sound() -> None:
-    """Play a system alert sound on macOS."""
+    """Play a system alert sound on macOS. No-ops silently on Linux/headless."""
     try:
         subprocess.Popen(
             ["afplay", "/System/Library/Sounds/Glass.aiff"],
@@ -132,8 +132,8 @@ def play_sound() -> None:
             stderr=subprocess.DEVNULL,
         )
     except FileNotFoundError:
-        # Not on macOS or afplay not available
-        print("\a", end="", flush=True)
+        # Not on macOS – skip silently (VPS notifications go via Discord)
+        pass
 
 
 def notify_slot_found(date: str, time: str, restaurant_id: str, url: str | None = None, webhook_url: str | None = None, user_id: str | None = None) -> None:

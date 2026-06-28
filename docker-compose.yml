@@ -1,0 +1,24 @@
+services:
+  omakase-fleet:
+    build: .
+    container_name: omakase-fleet
+    restart: unless-stopped
+    volumes:
+      - ./sessions:/app/sessions
+      - ./tasks.yaml:/app/tasks.yaml:ro
+    # Resource limits tuned for Oracle Cloud Free Tier (2 OCPU / 12 GB)
+    # Leaves headroom for the OS and other services
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 8G
+        reservations:
+          memory: 2G
+    environment:
+      - TZ=Asia/Tokyo
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

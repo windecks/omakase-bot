@@ -21,6 +21,7 @@ from src.notifications import (
     notify_booking_success,
     notify_slot_found,
     notify_waiting,
+    notify_antibot,
 )
 from src.reservation import BookingResult, attempt_booking
 
@@ -109,6 +110,12 @@ def run_monitor(bm: BrowserManager, config: BotConfig) -> bool:
             elif result == BookingResult.ALREADY_BOOKED:
                 logger.warning("Account is holding another reservation. Setting lock for 5 minutes.")
                 config.set_account_lock(5)
+                continue
+            elif result == BookingResult.ANTIBOT_TRIGGERED:
+                logger.error("Anti-bot triggered on monitor cycle.")
+                notify_antibot(config.restaurant_id, config.discord_webhook_url, config.discord_user_id)
+                # Lock account for 15 minutes to cool down
+                config.set_account_lock(15)
                 continue
             elif result == BookingResult.DATE_UNAVAILABLE:
                 logger.info(

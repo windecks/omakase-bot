@@ -184,6 +184,21 @@ def notify_booking_failed(reason: str) -> None:
     play_sound()
 
 
+def notify_antibot(restaurant_id: str, webhook_url: str | None = None, user_id: str | None = None) -> None:
+    """Announce antibot detection."""
+    msg = (
+        f"\n{'═' * 60}\n"
+        f"  🤖  ANTIBOT DETECTED!\n"
+        f"  Restaurant: {restaurant_id}\n"
+        f"  The site seems to have blocked or rate-limited the bot.\n"
+        f"{'═' * 60}\n"
+    )
+    print(_c(_Colors.RED + _Colors.BOLD, msg))
+    play_sound()
+    if webhook_url:
+        _send_discord_webhook(webhook_url, "🤖 Anti-Bot Detected!", f"Restaurant {restaurant_id} is redirecting/blocking the bot.", 0xFF0000, None, user_id)
+
+
 def notify_waiting(message: str) -> None:
     """Print a waiting/status message."""
     print(_c(_Colors.DIM, f"  ⏳ {message}"))

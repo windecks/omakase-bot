@@ -19,6 +19,7 @@ class BookingResult(Enum):
     DATE_UNAVAILABLE = "date_unavailable"
     BOOKING_FAILED = "booking_failed"
     ALREADY_BOOKED = "already_booked"
+    ANTIBOT_TRIGGERED = "antibot_triggered"
 
 
 def _delay(low=0.2, high=0.5): time.sleep(random.uniform(low, high))
@@ -231,6 +232,11 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
             logger.warning("Cross-reservation collision! Redirected to %s", bm.page.url)
             return BookingResult.ALREADY_BOOKED, None, None
         return BookingResult.SUCCESS, best[0], bm.page.url
+        
+    if "reservations/new" in bm.page.url:
+        logger.warning("Anti-bot triggered! Redirected back to the reservations page.")
+        return BookingResult.ANTIBOT_TRIGGERED, best[0], bm.page.url
+        
     return BookingResult.BOOKING_FAILED, best[0], None
 
 
@@ -271,4 +277,9 @@ def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingR
             logger.warning("Cross-reservation collision! Redirected to %s", bm.page.url)
             return BookingResult.ALREADY_BOOKED, None, None
         return BookingResult.SUCCESS, best[0], bm.page.url
+        
+    if "reservations/new" in bm.page.url:
+        logger.warning("Anti-bot triggered! Redirected back to the reservations page.")
+        return BookingResult.ANTIBOT_TRIGGERED, best[0], bm.page.url
+        
     return BookingResult.BOOKING_FAILED, best[0], None

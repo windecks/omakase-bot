@@ -20,6 +20,7 @@ from src.notifications import (
     notify_booking_success,
     notify_slot_found,
     notify_waiting,
+    notify_antibot,
 )
 from src.reservation import BookingResult, attempt_booking, quick_refresh_and_book
 
@@ -162,6 +163,12 @@ def run_sniper(bm: BrowserManager, config: BotConfig) -> bool:
         if result == BookingResult.BOOKING_FAILED:
             notify_booking_failed(f"Slot found but booking failed (attempt {attempt})")
             # Continue trying – might have been a race condition
+            
+        if result == BookingResult.ANTIBOT_TRIGGERED:
+            logger.error("Anti-bot triggered on sniper attempt.")
+            notify_antibot(config.restaurant_id, config.discord_webhook_url, config.discord_user_id)
+            config.set_account_lock(15)
+            return False
 
         # Small jittered delay between attempts
         jitter = random.uniform(0.05, 0.2)

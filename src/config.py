@@ -42,6 +42,13 @@ class BotConfig:
         sessions_dir.mkdir(exist_ok=True)
         return sessions_dir / f"hold_lock_{safe_email}.txt"
 
+    @property
+    def login_lock_path(self) -> Path:
+        safe_email = "".join(c for c in self.email if c.isalnum() or c in "._-@") or "default"
+        sessions_dir = self.project_root / "sessions"
+        sessions_dir.mkdir(exist_ok=True)
+        return sessions_dir / f"login_lock_{safe_email}.txt"
+
     def set_account_lock(self, minutes: int = 5):
         expiry = time.time() + (minutes * 60)
         self.account_lock_path.write_text(str(expiry))
@@ -54,6 +61,26 @@ class BotConfig:
         except:
             pass
         return 0.0
+
+    def set_login_lock(self, seconds: int = 60):
+        if seconds <= 0:
+            try:
+                self.login_lock_path.unlink(missing_ok=True)
+            except:
+                pass
+        else:
+            expiry = time.time() + seconds
+            self.login_lock_path.write_text(str(expiry))
+
+    def is_login_locked(self) -> bool:
+        try:
+            if self.login_lock_path.exists():
+                expiry = float(self.login_lock_path.read_text().strip())
+                if time.time() < expiry:
+                    return True
+        except:
+            pass
+        return False
 
     @property
     def restaurant_url(self) -> str: return f"https://omakase.in/en/r/{self.restaurant_id}"

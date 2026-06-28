@@ -186,11 +186,17 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
         logger.warning("Account already holds a pending reservation: %s", bm.page.url)
         return BookingResult.ALREADY_BOOKED, None, None
         
-    # Redirect to main restaurant page can happen after a recent cancellation
+    # Redirect to main restaurant page can happen if fully booked out or after cancellation
     if "reservations/new" not in bm.page.url:
+        flash = bm.page.locator(".c-flash-alert").first
+        if flash.is_visible(timeout=1500) and "No available slots" in (flash.text_content() or ""):
+            logger.info("Restaurant is fully booked out (redirected with flash message).")
+            return BookingResult.NO_SLOTS, None, None
+            
         logger.warning(
             "Redirected to %s – retrying reservation page", bm.page.url)
         bm.page.goto(cfg.reservation_url, wait_until="domcontentloaded")
+        
     if not _nav_month(bm.page, cfg.target_date.year, cfg.target_date.month) or not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None, None
 
@@ -242,6 +248,16 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
 
 def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, Optional[str], Optional[str]]:
     bm.page.reload(wait_until="domcontentloaded")
+    
+    if "reservations/new" not in bm.page.url:
+        flash = bm.page.locator(".c-flash-alert").first
+        if flash.is_visible(timeout=1500) and "No available slots" in (flash.text_content() or ""):
+            logger.info("Restaurant is fully booked out (redirected with flash message).")
+            return BookingResult.NO_SLOTS, None, None
+            
+        logger.warning("Redirected unexpectedly during reload: %s", bm.page.url)
+        return BookingResult.BOOKING_FAILED, None, None
+        
     if not _click_date(bm.page, cfg.target_date.day):
         return BookingResult.DATE_UNAVAILABLE, None, None
 

@@ -186,11 +186,10 @@ def attempt_booking(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingResult, 
         logger.warning("Account already holds a pending reservation: %s", bm.page.url)
         return BookingResult.ALREADY_BOOKED, None, None
         
-    # Redirect to main restaurant page can happen if fully booked out or after cancellation
+    # Redirect to main restaurant page means calendar is inaccessible (fully booked)
     if "reservations/new" not in bm.page.url:
-        flash = bm.page.locator(".c-flash-alert").first
-        if flash.is_visible(timeout=1500) and "No available slots" in (flash.text_content() or ""):
-            logger.info("Restaurant is fully booked out (redirected with flash message).")
+        if bm.page.url.rstrip("/") == cfg.restaurant_url.rstrip("/"):
+            logger.info("Restaurant is fully booked out (redirected to main page).")
             return BookingResult.NO_SLOTS, None, None
             
         logger.warning(
@@ -250,9 +249,8 @@ def quick_refresh_and_book(bm: BrowserManager, cfg: BotConfig) -> tuple[BookingR
     bm.page.reload(wait_until="domcontentloaded")
     
     if "reservations/new" not in bm.page.url:
-        flash = bm.page.locator(".c-flash-alert").first
-        if flash.is_visible(timeout=1500) and "No available slots" in (flash.text_content() or ""):
-            logger.info("Restaurant is fully booked out (redirected with flash message).")
+        if bm.page.url.rstrip("/") == cfg.restaurant_url.rstrip("/"):
+            logger.info("Restaurant is fully booked out (redirected to main page).")
             return BookingResult.NO_SLOTS, None, None
             
         logger.warning("Redirected unexpectedly during reload: %s", bm.page.url)
